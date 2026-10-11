@@ -241,10 +241,13 @@ class LexiconEntry(_Base):
     """Pronunciation hint for a word the TTS may get wrong (mostly kupu Māori in NZ English)."""
     word: str
     respelling: str
+    ipa: Optional[str] = None         # for SSML backends; never invented, see interpreter/lexicon.py
 
     def __post_init__(self) -> None:
         _text("lexicon.word", self.word)
         _text("lexicon.respelling", self.respelling)
+        if self.ipa is not None:
+            _text("lexicon.ipa", self.ipa)
 
     @classmethod
     def from_dict(cls, d: dict) -> "LexiconEntry":

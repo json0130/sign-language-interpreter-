@@ -14,3 +14,12 @@ LEXICON = {
 def lookup(word: str) -> Optional[str]:
     """Respelling for `word`, case-insensitive, or None if unknown."""
     return LEXICON.get(word.strip().casefold())
+
+
+# IPA left empty on purpose. Values must come from a te reo Māori speaker or adviser, not from us.
+_IPA: dict = {}
+
+
+def lookup_ipa(word: str) -> Optional[str]:
+    """IPA for `word`, case-insensitive, or None if unknown."""
+    return _IPA.get(word.strip().casefold())

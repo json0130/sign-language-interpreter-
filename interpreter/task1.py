@@ -10,7 +10,7 @@ from typing import Optional
 from interpreter.context import ContextProvider
 from interpreter.contracts import (EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
                                    SpeechPlan, Voice)
-from interpreter.lexicon import LEXICON, lookup
+from interpreter.lexicon import LEXICON, lookup, lookup_ipa
 
 # PLACEHOLDERS: colour-emotion associations vary between people and cultures; check them in the
 # evaluation step before relying on them.
@@ -103,7 +103,7 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     eye = EyeColour(rgb=EYE_PALETTE[emo.label], intensity=0.5 + 0.4 * (emo.arousal + 1) / 2,
                     pattern="pulse" if lively else "solid", transition_ms=200 if lively else 400)
 
-    lexicon = [LexiconEntry(w, lookup(w)) for w in LEXICON
+    lexicon = [LexiconEntry(w, lookup(w), ipa=lookup_ipa(w)) for w in LEXICON
                if re.search(rf"\b{re.escape(w)}\b", utterance, flags=re.IGNORECASE)]
 
     return SpeechPlan(frame_id=frame.frame_id, mode="interpret", utterance=utterance,

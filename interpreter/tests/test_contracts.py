@@ -108,6 +108,17 @@ class SpeechPlanTests(unittest.TestCase):
         with self.assertRaises(ValueError): Voice(language="mi")
 
 
+class LexiconIpaTests(unittest.TestCase):
+    def test_ipa_roundtrip_and_optional(self):
+        e = LexiconEntry("hui", "HOO-ee", ipa="x")
+        self.assertEqual(LexiconEntry.from_dict(json.loads(json.dumps(e.to_dict()))), e)
+        self.assertIsNone(LexiconEntry("hui", "HOO-ee").ipa)
+        self.assertIsNone(LexiconEntry.from_dict({"word": "hui", "respelling": "HOO-ee"}).ipa)
+
+    def test_empty_ipa_rejected(self):
+        with self.assertRaises(ValueError): LexiconEntry("hui", "HOO-ee", ipa="")
+
+
 class SignPlanTests(unittest.TestCase):
     def plan(self, **kw) -> SignPlan:
         base = dict(
