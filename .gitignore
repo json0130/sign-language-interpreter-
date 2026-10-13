@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# rater data from the listening test
+interpreter/listening_results/
