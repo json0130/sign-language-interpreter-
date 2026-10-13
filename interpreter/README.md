@@ -30,4 +30,6 @@ Unverified:
 - all IPA (the table is empty on purpose; values need a te reo speaker or adviser)
 
 
+Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
+
 Status: Step 2b-i (TTS adapters) added; awaiting sign-off. Next: Pepper NAOqi test bench (2b-ii), then Task 2.
