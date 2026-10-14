@@ -8,8 +8,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from interpreter.context import StaticContext
-from interpreter.contracts import LexiconEntry, Pause, Prosody, SpeechPlan
-from interpreter.local_tts.config import DEFAULT_VOICE, MODELS_DIR, RenderConfig
+from unittest import mock
+
+from interpreter.contracts import LexiconEntry, Pause, Prosody, SpeechPlan, Voice
+from interpreter.local_tts.config import DEFAULT_VOICE, MODELS_DIR, VOICES, RenderConfig
+from interpreter.local_tts.piper_engine import engine_for
 from interpreter.local_tts.render import render_speech
 from interpreter.mocks.mock_recogniser import load_frames
 from interpreter.task1 import plan_speech
@@ -126,7 +129,41 @@ class TestRender(unittest.TestCase):
         self.assertIn("emphasis not rendered by local backend", res.notes)
 
 
+class TestEngineByLanguage(unittest.TestCase):
+    def test_render_picks_engine_from_plan_language(self):
+        class Rate(FakeEngine):
+            def __init__(self, rate):
+                super().__init__()
+                self.native_sample_rate = rate
+        engines = {"en-NZ": Rate(16000), "en-US": Rate(22050)}
+        with tempfile.TemporaryDirectory() as d, mock.patch(
+                "interpreter.local_tts.render.engine_for", side_effect=lambda lang: engines[lang]):
+            for lang in engines:
+                p = replace(plan(), voice=Voice(language=lang))
+                res = render_speech(p, None, Path(d) / "x.wav")
+                self.assertEqual(res.sample_rate, engines[lang].native_sample_rate)
+                self.assertEqual(len(engines[lang].calls), 1)
+
+    def test_explicit_engine_wins(self):
+        eng = FakeEngine()
+        with tempfile.TemporaryDirectory() as d, mock.patch("interpreter.local_tts.render.engine_for") as m:
+            render_speech(replace(plan(), voice=Voice(language="en-US")), eng, Path(d) / "x.wav")
+        m.assert_not_called()
+        self.assertEqual(len(eng.calls), 1)
+
+    def test_zh_cn_and_unknown_language(self):
+        with self.assertRaises(NotImplementedError):
+            engine_for("zh-CN")
+        with self.assertRaises(ValueError):
+            engine_for("fr")
+
+    def test_registry_has_en_nz_and_en_us(self):
+        self.assertEqual(set(VOICES), {"en-NZ", "en-US"})
+        self.assertTrue(VOICES["en-US"].startswith("en_US-"))
+
+
 MODEL = MODELS_DIR / f"{DEFAULT_VOICE}.onnx"
+US_MODEL = MODELS_DIR / f"{VOICES['en-US']}.onnx"
 
 
 @unittest.skipUnless(importlib.util.find_spec("piper") and MODEL.exists(),
@@ -138,6 +175,17 @@ class TestRealPiper(unittest.TestCase):
             res = render_speech(plan("Hello there.", rate=1.1, pitch=1.05), PiperEngine(MODEL), Path(d) / "x.wav")
             self.assertGreater(res.duration_s, 0)
             self.assertEqual(read_wav(res.path)[0:2], (1, 2))
+
+
+@unittest.skipUnless(importlib.util.find_spec("piper") and US_MODEL.exists(),
+                     "piper or the en-US voice model is not available (run with interpreter/.venv)")
+class TestRealPiperEnUS(unittest.TestCase):
+    def test_renders_en_us_sentence_by_language(self):
+        p = replace(plan("Hello there, how are you today?", rate=1.05), voice=Voice(language="en-US"))
+        with tempfile.TemporaryDirectory() as d:
+            res = render_speech(p, None, Path(d) / "x.wav")   # engine chosen from plan.voice.language
+            self.assertGreater(res.duration_s, 0)
+            self.assertEqual(res.params["native_sample_rate"], engine_for("en-US").native_sample_rate)
 
 
 if __name__ == "__main__":

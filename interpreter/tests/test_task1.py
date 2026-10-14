@@ -36,7 +36,7 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(p.lexicon, [])
 
     def test_per_person_override_and_leading_capital(self):
-        fr = f("f-001"); fr.text_en = "Family is coming."
+        fr = f("f-001"); fr.text = "Family is coming."
         self.assertEqual(plan_speech(fr, CTX).utterance, "Whānau is coming.")
         ctx = StaticContext({("person:aroha", "ck:whanau"): False}, default=True)
         self.assertIn("family", plan_speech(f("f-001"), ctx).utterance)
@@ -58,7 +58,7 @@ class RuleTests(unittest.TestCase):
     def test_pauses_follow_commas(self):
         fr = f("f-002")                                   # "Hello, nice to meet you.", arousal .3
         self.assertEqual([(x.after_word_index, x.ms) for x in plan_speech(fr, CTX).prosody.pauses], [(0, 150)])
-        fr = f("f-003"); fr.text_en = "I miss, you know, my family."   # arousal -.3
+        fr = f("f-003"); fr.text = "I miss, you know, my family."   # arousal -.3
         self.assertEqual([x.ms for x in plan_speech(fr, CTX).prosody.pauses], [300, 300])
 
     def test_low_input_confidence_clarifies(self):
@@ -80,7 +80,7 @@ class RuleTests(unittest.TestCase):
 
     def test_grid_always_valid(self):
         base = f("f-001").to_dict()
-        base["text_en"] = "My family, sorry, is coming to the meeting tomorrow."
+        base["text"] = "My family, sorry, is coming to the meeting tomorrow."
         vals = (-1, -.5, 0, .5, 1)
         for label in EMOTIONS:
             for v in vals:

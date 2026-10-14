@@ -7,7 +7,8 @@
 Rules
 - Standard library only, no project imports (keeps the zero-import invariant).
 - Every object validates itself on construction, so a bad message fails at the boundary.
-- Language is NZ English. Te reo concepts travel as `Concept` tags, not as a second language.
+- Languages are tagged per message (LANGS). NZ English is the default; te reo concepts travel as
+  `Concept` tags, not as a second language. zh-CN is reserved and not implemented.
 - Prosody values are RELATIVE multipliers (1.0 = neutral), so the same plan can drive NAOqi
   or an external TTS. An adapter (Step 2) maps them to backend parameters.
 - Emotion is the SPEAKER's emotion, never the robot's persona.
@@ -18,9 +19,11 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "0.2"
+SUPPORTED_SCHEMAS = ("0.1", "0.2")   # both are accepted on input; objects always report SCHEMA_VERSION
 
-DIRECTIONS = ("sign_to_speech", "speech_to_sign")
+DIRECTIONS = ("sign_to_speech", "speech_to_sign", "text_to_speech")
+LANGS = ("en-NZ", "en-US", "zh-CN")
 EMOTIONS = ("neutral", "happy", "excited", "calm", "sad", "apologetic",
             "angry", "anxious", "surprised", "confused")
 NUANCE_KINDS = ("statement", "question", "request", "command", "exclamation", "emphasis",
@@ -50,6 +53,12 @@ def _range(name: str, value: float, lo: float, hi: float) -> None:
 def _text(name: str, value: Any) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
+
+
+def _check_schema(obj: Any) -> None:
+    """Accept any SUPPORTED_SCHEMAS on input and upgrade the object to SCHEMA_VERSION."""
+    _in("schema_version", obj.schema_version, SUPPORTED_SCHEMAS)
+    obj.schema_version = SCHEMA_VERSION
 
 
 class _Base:
@@ -109,6 +118,7 @@ class Concept(_Base):
     slug: str
     english: str                      # the plain NZ English word ("family")
     te_reo: Optional[str] = None      # the kupu Māori form ("whānau"), if one is in common NZ English use
+    glosses: dict[str, str] = field(default_factory=dict)   # lang (LANGS) -> plain-word rendering
 
     def __post_init__(self) -> None:
         if not (isinstance(self.slug, str) and self.slug.startswith("ck:") and len(self.slug) > 3):
@@ -116,6 +126,9 @@ class Concept(_Base):
         _text("concept.english", self.english)
         if self.te_reo is not None:
             _text("concept.te_reo", self.te_reo)
+        for lang, text in self.glosses.items():
+            _in("concept.glosses lang", lang, LANGS)
+            _text(f"concept.glosses[{lang}]", text)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Concept":
@@ -129,30 +142,41 @@ class InterpretationFrame(_Base):
     direction: str
     speaker_id: str                   # KG PersonNode id, e.g. "person:aroha"
     addressee_id: str
-    text_en: str                      # NZ English. Direction 1: recogniser's reading. Direction 2: STT transcript.
+    text: str                         # In source_lang. Direction 1: recogniser's reading. Direction 2: STT transcript.
     emotion: Emotion
     input_confidence: float           # recogniser confidence (dir 1) or STT confidence (dir 2), [0, 1]
     nuance: list[NuanceTag] = field(default_factory=list)
     concepts: list[Concept] = field(default_factory=list)
     gloss: Optional[str] = None       # only for sign_to_speech
     setting: Optional[str] = None     # e.g. "lab_open_day", "marae"
+    source_lang: str = "en-NZ"
+    target_lang: str = "en-NZ"
     schema_version: str = SCHEMA_VERSION
+
+    @property
+    def text_en(self) -> str:
+        """Deprecated read-only alias for `text` (the field was called text_en in schema 0.1)."""
+        return self.text
 
     def __post_init__(self) -> None:
         _text("frame_id", self.frame_id)
         _in("direction", self.direction, DIRECTIONS)
         _text("speaker_id", self.speaker_id)
         _text("addressee_id", self.addressee_id)
-        _text("text_en", self.text_en)
+        _text("text", self.text)
+        _in("source_lang", self.source_lang, LANGS)
+        _in("target_lang", self.target_lang, LANGS)
         _range("input_confidence", self.input_confidence, 0, 1)
         if self.gloss is not None and self.direction != "sign_to_speech":
             raise ValueError("gloss is only valid when direction='sign_to_speech'")
-        if self.schema_version != SCHEMA_VERSION:
-            raise ValueError(f"schema_version {self.schema_version!r} != {SCHEMA_VERSION!r}")
+        _check_schema(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "InterpretationFrame":
         d = dict(d)
+        legacy = d.pop("text_en", None)   # schema 0.1 key; `text` wins if both are present
+        if "text" not in d and legacy is not None:
+            d["text"] = legacy
         d["emotion"] = Emotion.from_dict(d["emotion"])
         d["nuance"] = [NuanceTag.from_dict(x) for x in d.get("nuance", [])]
         d["concepts"] = [Concept.from_dict(x) for x in d.get("concepts", [])]
@@ -170,8 +194,7 @@ class Voice(_Base):
     def __post_init__(self) -> None:
         _in("voice.persona", self.persona, PERSONAS)
         _in("voice.backend", self.backend, BACKENDS)
-        if self.language != "en-NZ":
-            raise ValueError("language is fixed to 'en-NZ' for now")
+        _in("voice.language", self.language, LANGS)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Voice":
@@ -282,8 +305,7 @@ class SpeechPlan(_Base):
         for p in self.prosody.pauses:
             if p.after_word_index >= len(words):
                 raise ValueError(f"pause index {p.after_word_index} beyond utterance length {len(words)}")
-        if self.schema_version != SCHEMA_VERSION:
-            raise ValueError(f"schema_version {self.schema_version!r} != {SCHEMA_VERSION!r}")
+        _check_schema(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "SpeechPlan":
@@ -354,8 +376,7 @@ class SignPlan(_Base):
         for h in self.nonmanual_hints:
             _in("nonmanual_hint", h, NONMANUAL_HINTS)
         _range("confidence", self.confidence, 0, 1)
-        if self.schema_version != SCHEMA_VERSION:
-            raise ValueError(f"schema_version {self.schema_version!r} != {SCHEMA_VERSION!r}")
+        _check_schema(self)
 
     @classmethod
     def from_dict(cls, d: dict) -> "SignPlan":

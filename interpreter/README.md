@@ -40,13 +40,14 @@ Setup (once, from the repo root):
 python3 -m venv interpreter/.venv
 interpreter/.venv/bin/pip install piper-tts
 mkdir -p interpreter/models
-interpreter/.venv/bin/python -m piper.download_voices --download-dir interpreter/models en_GB-alan-medium
+interpreter/.venv/bin/python -m piper.download_voices --download-dir interpreter/models en_GB-alan-medium en_US-lessac-medium
 ```
 
 Run:
 
 ```
-interpreter/.venv/bin/python -m interpreter.run_local --flat          # renders interpreter/audio_out/<frame_id>.wav (+ -flat.wav)
+interpreter/.venv/bin/python -m interpreter.run_local --flat          # renders interpreter/audio_out/<lang>/<frame_id>.wav (+ -flat.wav)
+interpreter/.venv/bin/python -m interpreter.run_local --target-lang en-US --flat   # speak en-US instead of each frame's own target_lang
 interpreter/.venv/bin/python -m interpreter.run_local --flat --play   # also plays each file
 interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v   # includes the real-Piper test
 ```
@@ -60,6 +61,18 @@ Not supported yet:
 - Any NZ English voice (`en_GB-alan-medium` is a British male voice, used as a stand-in).
 - Verified te reo pronunciation: the respellings are unchecked placeholders and need review by Māori language advisers or speakers.
 - Exact tempo: Piper's length scale is not perfectly proportional, so measured durations drift from the target rate. Judge by ear.
+
+## Languages
+
+Every message is language-tagged (`contracts.LANGS`, schema 0.2). `InterpretationFrame` has `text`, `source_lang` and `target_lang` (all default `en-NZ`); the old `text_en` key still loads and `frame.text_en` is a deprecated read-only alias. `Voice.language` and `Concept.glosses` use the same codes. Schema 0.1 messages are accepted and come out as 0.2.
+
+| Language | Status | Local voice |
+|---|---|---|
+| en-NZ | Supported | `en_GB-alan-medium` (British stand-in until an NZ voice is chosen) |
+| en-US | Supported | `en_US-lessac-medium` |
+| zh-CN | Reserved, not implemented (`plan_speech` and `engine_for` raise `NotImplementedError`) | none |
+
+`plan_speech` accepts `sign_to_speech` and `text_to_speech` frames and speaks in `target_lang` (argument, else the frame's). `interpreter/concepts.py` holds the `ck:` concept table (te reo form plus per-language glosses). All glosses are placeholders that need review by a te reo speaker or adviser, and the zh-CN glosses are empty until fluent speakers supply and review them.
 
 ## Pepper test bench
 
@@ -90,4 +103,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Step L1 (local Piper speech output) added; awaiting listening check. Robot and cloud TTS paused.
+Status: Step C2 (language-aware contracts and voices) added; awaiting sign-off. Next: NZ English adapter, then KG relationships.

@@ -1,4 +1,4 @@
-"""Task 1 (sign_to_speech): rule-based speech and expression planner.
+"""Task 1 (sign_to_speech or text_to_speech): rule-based speech and expression planner.
 
 Interpret, never reply: the plan carries the SIGNER's words and the SIGNER's emotion. Pepper adds no
 content; its own voice is used only for clarification. Rules only: no KG, PAD, LLM or TTS here.
@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from interpreter.context import ContextProvider
-from interpreter.contracts import (EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
+from interpreter.contracts import (LANGS, EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
                                    SpeechPlan, Voice)
 from interpreter.lexicon import LEXICON, lookup, lookup_ipa
 
@@ -51,7 +51,7 @@ def _swap(text: str, pairs: list) -> str:
 
 
 def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
-                cfg: Optional[Task1Config] = None) -> SpeechPlan:
+                cfg: Optional[Task1Config] = None, target_lang: Optional[str] = None) -> SpeechPlan:
     """Plan how Pepper speaks and shows the signer's emotion.
 
     Clarify: if input_confidence < cfg.clarify_threshold, return the robot-voice line plus an amber
@@ -63,17 +63,25 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
 
     Prosody: raw multipliers from arousal/valence, scaled toward neutral by
     expressiveness x emotion.confidence. Eye colour comes from EYE_PALETTE.
+
+    Language: speaks in `target_lang or frame.target_lang`. en-NZ and en-US plan identically and set
+    Voice.language; zh-CN is reserved and raises NotImplementedError.
     """
     cfg = cfg or Task1Config()
-    if frame.direction != "sign_to_speech":
-        raise ValueError(f"Task 1 handles sign_to_speech only, got {frame.direction!r}")
+    if frame.direction not in ("sign_to_speech", "text_to_speech"):
+        raise ValueError(f"Task 1 handles sign_to_speech and text_to_speech only, got {frame.direction!r}")
+    lang = target_lang or frame.target_lang
+    if lang not in LANGS:
+        raise ValueError(f"target_lang={lang!r} not in {LANGS}")
+    if lang == "zh-CN":
+        raise NotImplementedError("Mandarin rendering is not implemented yet")
 
     if frame.input_confidence < cfg.clarify_threshold:
         return SpeechPlan(frame_id=frame.frame_id, mode="clarify", utterance=CLARIFY_UTTERANCE,
-                          emotion_label="neutral", voice=Voice(persona="robot"), eye=CLARIFY_EYE)
+                          emotion_label="neutral", voice=Voice(persona="robot", language=lang), eye=CLARIFY_EYE)
 
     pairs = _choose_words(frame, ctx)
-    utterance = _swap(frame.text_en, pairs)
+    utterance = _swap(frame.text, pairs)
     tokens = utterance.split()
     stripped = [t.strip(_PUNCT).casefold() for t in tokens]
 
@@ -107,4 +115,4 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
                if re.search(rf"\b{re.escape(w)}\b", utterance, flags=re.IGNORECASE)]
 
     return SpeechPlan(frame_id=frame.frame_id, mode="interpret", utterance=utterance,
-                      emotion_label=emo.label, voice=Voice(), prosody=prosody, eye=eye, lexicon=lexicon)
+                      emotion_label=emo.label, voice=Voice(language=lang), prosody=prosody, eye=eye, lexicon=lexicon)

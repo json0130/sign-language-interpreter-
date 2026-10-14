@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 
 from interpreter.contracts import SpeechPlan
 from interpreter.local_tts.config import RenderConfig
+from interpreter.local_tts.piper_engine import engine_for
 from interpreter.tts.base import lexicon_spans, pause_map, split_punct, tokens
 
 PITCH_RANGE = (0.8, 1.25)
@@ -61,6 +62,8 @@ def respelled_segments(plan: SpeechPlan, style: str) -> List[Tuple[str, int]]:
 def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig] = None) -> RenderResult:
     """Synthesise `plan` to a mono 16-bit WAV at `out_path`.
 
+    `engine=None` picks the engine for plan.voice.language (engine_for); an explicit engine wins.
+
     Rate and pitch from one engine and one relabel. With r = prosody.rate and p = prosody.pitch
     (p clamped to 0.8..1.25):
       * synthesise with length_scale = base * p / r  (the voice's own pace stretched by p/r);
@@ -77,6 +80,8 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
     are not used here.
     """
     cfg = cfg or RenderConfig()
+    if engine is None:
+        engine = engine_for(plan.voice.language)
     notes: List[str] = []
     pr = plan.prosody
     rate = pr.rate

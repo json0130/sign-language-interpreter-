@@ -89,11 +89,11 @@ class BaselineTests(unittest.TestCase):
         for f in load_frames(FRAMES, "sign_to_speech"):
             p = baseline_task1(f)
             self.assertEqual(p, SpeechPlan.from_dict(json.loads(p.to_json())))
-            self.assertEqual((p.mode, p.voice.persona, p.utterance), ("interpret", "interpreter", f.text_en))
+            self.assertEqual((p.mode, p.voice.persona, p.utterance), ("interpret", "interpreter", f.text))
         for f in load_frames(FRAMES, "speech_to_sign"):
             p = baseline_task2(f)
             self.assertEqual(p, SignPlan.from_dict(json.loads(p.to_json())))
-            self.assertEqual((p.meaning, p.register, p.confidence), (f.text_en, "neutral", f.input_confidence))
+            self.assertEqual((p.meaning, p.register, p.confidence), (f.text, "neutral", f.input_confidence))
 
 
 if __name__ == "__main__":
