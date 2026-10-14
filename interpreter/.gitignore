@@ -2,3 +2,9 @@ listening_results/
 .venv/
 models/
 audio_out/
+bakeoff/venvs/
+bakeoff/models/
+bakeoff/out/
+bakeoff/repos/
+bakeoff/reference/
+bakeoff/checkpoints/
