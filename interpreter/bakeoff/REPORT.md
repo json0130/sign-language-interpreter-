@@ -1,5 +1,7 @@
 # TTS emotion bake-off (Step B2)
 
+> **Update (2026-10-15):** Jay's listening verdict is in section 9. The Kokoro, Parler and Chatterbox clips described below were deleted at Jay's request (they are git-ignored and can be regenerated with `run.py`), so the paths in sections 5 and 6 for those three engines no longer exist. The CosyVoice and IndexTTS clips remain; see section 9 for the second round.
+
 Throwaway evaluation. Nothing outside `interpreter/bakeoff/` was changed, and no audio was played by the tooling; the listening is yours. Date run: 2026-10-14.
 
 **Why:** Piper plus our sample-rate pitch shift cannot convey emotion (you heard none in the sweep). This compares open TTS engines that take an emotion or style input.
@@ -124,3 +126,61 @@ Play a file with `aplay interpreter/bakeoff/out/indextts/s2__sad.wav`. The other
 ## 8. Reproduce
 
 `setup.sh` (commands that worked, read before running), then `python3 run.py --device cuda`. Adapters are `engines/adapter_<name>.py`; `common.py` holds the sentences, the neutral-reference path and the timing loop; `ser.py` and `zh_check.py` are the proxy checks. Outputs, venvs, models, cloned repos and the reference clip are git-ignored.
+
+## 9. Listening verdict and round 2 (2026-10-15)
+
+Jay's verdict on round 1 (sentence 2, by ear):
+
+| Engine | Verdict |
+|---|---|
+| Kokoro | No difference between neutral, sad, excited and angry (expected). |
+| Parler | Some change, but each emotion sounds like a different person, and all sound depressed. |
+| Chatterbox | Very natural, with a bit more variation than Kokoro. |
+| CosyVoice | Good, second best, except that **excited sounded sad**. |
+| IndexTTS-2.5 | The best, but **a bit too exaggerated**. |
+
+Decision: the Kokoro, Parler and Chatterbox clips were removed. CosyVoice and IndexTTS are kept as the two options, each tuned once more before choosing (or both kept as options). Jay also noted that VRAM need not rule an engine out, because the TTS can run on the AI server and be requested over the network. That was not evaluated here: the AI server's GPU and the request path are unknown to this report.
+
+### CosyVoice: excited fixed (`tune_cosyvoice.py`)
+
+CosyVoice 3 documents only three trained emotion instructions in its repo (very happy, very sad, very angry), plus loud, soft, slow and fast. Version 1 reused "very happy" for excited. That clip ran 0.52 s *slower* than neutral on sentence 2, which fits "sounded sad". I rendered eight variants of excited on sentences 2 and 3 (`out/ct_<variant>/s2__excited.wav`, `s3__excited.wav`), scored by the SER and by length relative to neutral:
+
+| Variant | s2 length vs neutral | SER (s2 / s3) |
+|---|---|---|
+| v1_happy (the old mapping) | +0.52 s | neutral / neutral |
+| happy, speed 1.15 | +0.06 s | neutral / neutral |
+| happy, speed 1.30 | -0.28 s | unknown / neutral |
+| happy + "as fast as possible" instruction | 0.00 s | neutral / happy |
+| happy + loud | +0.12 s | neutral / neutral |
+| Chinese "very excited" | +0.28 s | neutral / happy |
+| **Chinese "excited, joyful tone" (new mapping)** | **-0.64 s** | neutral / happy |
+| English "very excited and happy voice" | +1.00 s | angry / happy |
+
+The new mapping is the Chinese phrase 请用激动欢快的语气说一句话 ("speak in an excited, joyful tone"). It is not one of the repo's tested instructions, so it relies on the model generalising. Full 12-clip set re-rendered as `out/cosyvoice/` (the old one is `out/cosyvoice_v1/`); the other three emotions are unchanged. SER match went from 4/12 to 6/12 (excited: happy on s1 and s3, neutral on s2). One sentence per variant is a weak signal, so the by-ear check is what counts.
+
+### IndexTTS: strength sweep (`emo_alpha`)
+
+IndexTTS multiplies its emotion vector by `emo_alpha` (0 to 1). Same four emotions at three lower strengths, same neutral reference voice:
+
+| Folder | emo_alpha | SER match | s2 length: neutral / sad / excited / angry | SER notes |
+|---|---|---|---|---|
+| `out/indextts/` | 1.0 (round 1) | 7/12 | 4.23 / 6.03 / 4.79 / 4.23 s | neutral read as angry 2/3 |
+| `out/indextts_a70/` | 0.7 | 5/12 | 4.26 / 6.30 / 4.79 / 4.59 s | excited read as angry 3/3 |
+| `out/indextts_a50/` | 0.5 | 6/12 | 4.35 / 5.42 / 4.46 / 4.58 s | neutral neutral 3/3, angry 3/3; sad and excited softer |
+| `out/indextts_a30/` | 0.3 | 5/12 | 4.30 / 4.67 / 4.62 / 4.54 s | nearly flat |
+
+By the numbers alone, 0.5 looks like the best candidate for "less exaggerated but still different"; Jay's ear decides.
+
+### Round 2 listening order (sentence 2)
+
+Paths relative to `interpreter/bakeoff/`. Each line: neutral, then sad, then excited, then angry (`s2__<emotion>.wav` in that folder).
+
+1. CosyVoice, new mapping: `out/cosyvoice/`
+2. CosyVoice, old mapping (only excited differs): `out/cosyvoice_v1/s2__excited.wav`
+3. Other CosyVoice excited variants, if the new one is not right: `out/ct_<variant>/s2__excited.wav`, with `<variant>` from the table above
+4. IndexTTS at 0.5: `out/indextts_a50/`
+5. IndexTTS at 0.7: `out/indextts_a70/`
+6. IndexTTS at 0.3: `out/indextts_a30/`
+7. IndexTTS at 1.0 (round 1, the "too exaggerated" one): `out/indextts/`
+
+To reproduce one IndexTTS strength: `PYTHONPATH=../.. venvs/indextts/bin/python engines/adapter_indextts.py 0.5`, then normalise (`python3 -c "from run import normalise, OUT; normalise(OUT/'indextts_a50')"`).

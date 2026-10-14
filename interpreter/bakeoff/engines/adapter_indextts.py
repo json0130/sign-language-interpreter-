@@ -20,6 +20,10 @@ EMOTION_MAP = {
 
 
 def main():
+    # Optional argv[1] = emo_alpha in (0, 1]: scales every emotion vector (IndexTTS multiplies them by it). Jay found
+    # alpha 1.0 "a bit too exaggerated"; lower values go to out/indextts_a<percent>/ so the original stays comparable.
+    alpha = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    name = "indextts" if alpha == 1.0 else f"indextts_a{round(alpha * 100)}"
     sys.path.insert(0, str(REPO))
     import numpy as np
     import torch
@@ -30,10 +34,10 @@ def main():
         torch.manual_seed(0)
         vec = EMOTION_MAP[emotion]
         sr, wav = tts.infer(spk_audio_prompt=str(SPEAKER_WAV), text=text, output_path=None, lang="EN",
-                            emo_vector=vec, use_random=False)
+                            emo_vector=vec, emo_alpha=alpha, use_random=False)
         return np.asarray(wav, dtype="float32").reshape(-1) / 32768.0, sr
 
-    run_engine("indextts", synth, {"model": "IndexTeam/IndexTTS-2.5", "device": "cuda"})
+    run_engine(name, synth, {"model": "IndexTeam/IndexTTS-2.5", "device": "cuda", "emo_alpha": alpha})
 
 
 if __name__ == "__main__":

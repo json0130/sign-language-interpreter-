@@ -8,13 +8,15 @@ REPO = HERE / "repos" / "CosyVoice"
 MODEL_DIR = HERE / "models" / "cosyvoice3"
 PROMPT_WAV = REFERENCE    # shared neutral reference (the repo's own prompt sounds "happy" to the SER)
 _A = "You are a helpful assistant."
-# emotion -> instruction. The README/utils list the tested emotion instructions as Chinese phrases
-# (very happy / very sad / very angry); there is no "excited" instruction, so excited reuses "very happy".
+# emotion -> (instruction, speed). The repo's tested emotion instructions are Chinese phrases (very happy / sad / angry);
+# there is no trained "excited". v1 reused "very happy" for excited and it sounded sad to Jay (and ran slower than
+# neutral). v2 uses an untested but LLM-generalised phrasing, "speak in an excited, joyful tone", which was faster than
+# neutral and heard as happy by the SER (see tune_cosyvoice.py for the other variants tried).
 EMOTION_MAP = {
-    "neutral": f"{_A}<|endofprompt|>",
-    "sad": f"{_A} 请非常伤心地说一句话。<|endofprompt|>",
-    "excited": f"{_A} 请非常开心地说一句话。<|endofprompt|>",
-    "angry": f"{_A} 请非常生气地说一句话。<|endofprompt|>",
+    "neutral": (f"{_A}<|endofprompt|>", 1.0),
+    "sad": (f"{_A} 请非常伤心地说一句话。<|endofprompt|>", 1.0),
+    "excited": (f"{_A} 请用激动欢快的语气说一句话。<|endofprompt|>", 1.0),
+    "angry": (f"{_A} 请非常生气地说一句话。<|endofprompt|>", 1.0),
 }
 
 
@@ -26,7 +28,8 @@ def main():
 
     def synth(text, emotion):
         torch.manual_seed(0)
-        parts = [o["tts_speech"] for o in cv.inference_instruct2(text, EMOTION_MAP[emotion], str(PROMPT_WAV), stream=False)]
+        instruct, speed = EMOTION_MAP[emotion]
+        parts = [o["tts_speech"] for o in cv.inference_instruct2(text, instruct, str(PROMPT_WAV), stream=False, speed=speed)]
         return torch.cat(parts, dim=1), cv.sample_rate
 
     run_engine("cosyvoice", synth, {"model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512", "device": "cuda"})
