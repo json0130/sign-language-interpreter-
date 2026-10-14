@@ -19,6 +19,18 @@ EMOTION_MAP = {
     "angry": (f"{_A} 请非常生气地说一句话。<|endofprompt|>", 1.0),
 }
 
+# Untested phrasings for the other emotions of our contract (CosyVoice has no numeric strength or mixing; mixing means
+# describing it in words). Only "very happy / sad / angry" are instructions the repo tests. Used by engines/extras.py.
+EXTRA_INSTRUCTIONS = {
+    "happy": "请非常开心地说一句话。",
+    "calm": "请用平静温和的语气说一句话。",
+    "apologetic": "请用抱歉愧疚的语气说一句话。",
+    "anxious": "请用紧张焦虑的语气说一句话。",
+    "surprised": "请非常惊讶地说一句话。",
+    "confused": "请用困惑疑惑的语气说一句话。",
+    "mix_sad_gentle": "请用悲伤又温柔的语气说一句话。",     # a mixture, described in words
+}
+
 
 def main():
     sys.path[:0] = [str(REPO), str(REPO / "third_party" / "Matcha-TTS")]

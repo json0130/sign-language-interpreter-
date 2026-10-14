@@ -184,3 +184,26 @@ Paths relative to `interpreter/bakeoff/`. Each line: neutral, then sad, then exc
 7. IndexTTS at 1.0 (round 1, the "too exaggerated" one): `out/indextts/`
 
 To reproduce one IndexTTS strength: `PYTHONPATH=../.. venvs/indextts/bin/python engines/adapter_indextts.py 0.5`, then normalise (`python3 -c "from run import normalise, OUT; normalise(OUT/'indextts_a50')"`).
+
+## 10. Round 3: per-emotion strength and how flexible the emotion input is (2026-10-15)
+
+Jay's round-2 ears: CosyVoice v1 excited sounds sad and the new mapping is only slightly better; IndexTTS 0.5 and 0.7 both sound good. Jay's per-emotion picks for IndexTTS: **neutral 0.5, sad 0.7, excited 0.5, angry 0.7**. These are now `ALPHA_BY_EMOTION` in `engines/adapter_indextts.py`, rendered as `out/indextts_mixed/` (`python adapter_indextts.py mixed`). Mixed-set sentence-2 lengths: neutral 4.35 s, sad 6.30 s, excited 4.46 s, angry 4.59 s.
+
+### What each engine can express
+
+| | IndexTTS-2.5 | CosyVoice 3 (0.5B) |
+|---|---|---|
+| Named emotions | An 8-weight vector: happy, angry, sad, afraid, disgusted, melancholic, surprised, calm. There is no neutral, excited, anxious, apologetic or confused slot, so those are approximated by mixing (the mappings are in `EMOTION_MAP`). | Trained instructions in the repo: very happy, very sad, very angry; also loud, soft, slow, fast, and Chinese dialects. Anything else is free wording that the model may or may not generalise. |
+| Mixing | Yes, with numeric weights (for example sad 0.4 + melancholic 0.3 + calm 0.4 for apologetic). The model multiplies some weights down (happy 0.94, angry 0.88, disgusted 0.94, melancholic 0.94, surprised 0.69, calm 0.56) and rescales so the total is at most 0.8, so mixtures share one budget. | Only by describing the mix in words ("sad and gentle"); no numeric weights. |
+| Strength | `emo_alpha` 0 to 1 scales the whole vector (per emotion or per call), or change the vector magnitudes. Not linear: at 0.3 the output was nearly flat. | No dial; wording ("very ...") and a `speed` parameter. |
+| Calm | A `calm` weight (down-weighted internally), plus `duration_factor` (above 1 is slower) for a slower pace. | A phrase such as "calm and gentle", or the slow instruction. Untested phrasing. |
+| Other controls | Emotion reference clip (an audio sample of the wanted emotion), emotion derived from text (`use_emo_text`, or `emo_text` for a separate description; per the README, not tried here; 2.5 needs `use_qwen_emo=True`), `duration_factor` 0.5 to 2.0. | `speed`; languages and dialects. |
+| Pitch | No explicit control in either engine. | |
+
+### Files to listen to (all sentence 2: "I'm sorry, the meeting has been moved to next week.")
+
+- `out/indextts_mixed/s2__{neutral,sad,excited,angry}.wav`: Jay's per-emotion strengths.
+- `out/indextts_extra/s2__{happy,calm,apologetic,anxious,surprised,confused}.wav` and `s2__calm_slow.wav` (calm at `duration_factor` 1.15): the other six emotions of our contract as untuned mixtures.
+- `out/cosyvoice_extra/s2__{happy,calm,apologetic,anxious,surprised,confused}.wav` and `s2__mix_sad_gentle.wav`: the same six as untested wordings, plus one mixture described in words.
+
+The SER proxy is not useful here: it has no calm, apologetic, anxious or confused class, it heard most IndexTTS clips as angry and most CosyVoice clips as neutral, and it cannot say whether a mixture sounds right. Clip lengths do differ (IndexTTS 4.4 to 5.1 s, CosyVoice 2.8 to 4.3 s), so both engines respond to the input; whether the result sounds like the intended emotion needs listening.
