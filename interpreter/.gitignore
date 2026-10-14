@@ -1,1 +1,4 @@
 listening_results/
+.venv/
+models/
+audio_out/

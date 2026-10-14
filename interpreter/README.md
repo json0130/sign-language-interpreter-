@@ -30,6 +30,37 @@ Unverified:
 - all IPA (the table is empty on purpose; values need a te reo speaker or adviser)
 
 
+## Local speech output
+
+`interpreter/local_tts/` turns a `SpeechPlan` into a WAV on this machine with [Piper](https://github.com/OHF-Voice/piper1-gpl) (`piper-tts`, the only third-party package; it lives in `interpreter/.venv/` and is imported lazily). The robot and cloud TTS paths are paused, not removed, and `SpeechPlan.eye` is ignored here.
+
+Setup (once, from the repo root):
+
+```
+python3 -m venv interpreter/.venv
+interpreter/.venv/bin/pip install piper-tts
+mkdir -p interpreter/models
+interpreter/.venv/bin/python -m piper.download_voices --download-dir interpreter/models en_GB-alan-medium
+```
+
+Run:
+
+```
+interpreter/.venv/bin/python -m interpreter.run_local --flat          # renders interpreter/audio_out/<frame_id>.wav (+ -flat.wav)
+interpreter/.venv/bin/python -m interpreter.run_local --flat --play   # also plays each file
+interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v   # includes the real-Piper test
+```
+
+`--flat` renders the same words with default prosody, for A/B listening. Playback uses the first of `afplay`, `paplay`, `aplay`, `ffplay`, `powershell`.
+
+How the prosody is produced (`local_tts/render.py`): Piper has no pitch control, so rate `r` and pitch `p` come from one trick. Synthesise with `length_scale = base * p / r`, then label the WAV with sample rate `round(native * p)`. Playing at `p` times the native rate raises pitch by `p` and speeds tempo by `p`; the longer `length_scale` already stretched the audio by `p`, so net tempo is `r`. Pauses are silence sized against the output rate, so they last the stated milliseconds in real playback. Volume: the whole waveform is normalised to `BASE_PEAK` (0.7), then multiplied by `prosody.volume` (clamped 0.25 to 1.5) and clipped. Pitch is clamped to 0.8 to 1.25. Lexicon respellings are lowercased, with hyphens kept (`RESPELL_STYLE = "hyphen"`) or removed (`"joined"`).
+
+Not supported yet:
+- Emphasis (a note is added to the result).
+- Any NZ English voice (`en_GB-alan-medium` is a British male voice, used as a stand-in).
+- Verified te reo pronunciation: the respellings are unchecked placeholders and need review by Māori language advisers or speakers.
+- Exact tempo: Piper's length scale is not perfectly proportional, so measured durations drift from the target rate. Judge by ear.
+
 ## Pepper test bench
 
 `interpreter/robot/` plays Task 1 output on a real Pepper (NAOqi) and runs a listening test. Needs the optional `qi` bindings for a real robot (`pip install qi`, or the Aldebaran Python 2.7 SDK); `--dry-run` needs nothing.
@@ -59,4 +90,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Step 2b-ii (Pepper NAOqi test bench) added; awaiting sign-off. Next: run the probe and listening test, then decide the TTS backend.
+Status: Step L1 (local Piper speech output) added; awaiting listening check. Robot and cloud TTS paused.
