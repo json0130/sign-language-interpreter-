@@ -11,6 +11,7 @@ from interpreter.context import ContextProvider
 from interpreter.contracts import (LANGS, EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
                                    SpeechPlan, Voice)
 from interpreter.lexicon import LEXICON, lookup, lookup_ipa
+from interpreter.prosody_profiles import scaled, strength
 
 # PLACEHOLDERS: colour-emotion associations vary between people and cultures; check them in the
 # evaluation step before relying on them.
@@ -27,12 +28,8 @@ _PUNCT = ".,!?;:"
 
 @dataclass(frozen=True)
 class Task1Config:
-    expressiveness: float = 0.8      # 0 = flat delivery, 1 = full emotional delivery
+    expressiveness: float = 1.0      # 0 = flat delivery, 1 = full profile strength, up to 2 = exaggerated
     clarify_threshold: float = 0.5   # input_confidence below this -> ask for a repeat
-
-
-def _clamp(x: float, lo: float = 0.6, hi: float = 1.6) -> float:
-    return max(lo, min(hi, x))
 
 
 def _choose_words(frame: InterpretationFrame, ctx: ContextProvider) -> list:
@@ -61,8 +58,9 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     Word choice: concept.english is swapped for concept.te_reo when ctx says the speaker prefers it.
     Known limitation: no grammar rewriting, so "family is" becomes "whānau is".
 
-    Prosody: raw multipliers from arousal/valence, scaled toward neutral by
-    expressiveness x emotion.confidence. Eye colour comes from EYE_PALETTE.
+    Prosody: the emotion's profile (prosody_profiles.PROFILES) scaled by
+    expressiveness x intensity x confidence (see prosody_profiles.strength). Eye colour comes
+    from EYE_PALETTE.
 
     Language: speaks in `target_lang or frame.target_lang`. en-NZ and en-US plan identically and set
     Voice.language; zh-CN is reserved and raises NotImplementedError.
@@ -86,10 +84,8 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     stripped = [t.strip(_PUNCT).casefold() for t in tokens]
 
     emo = frame.emotion
-    e = cfg.expressiveness * emo.confidence
-
-    def scale(m: float) -> float:
-        return 1 + (_clamp(m) - 1) * e
+    rate, pitch, volume = scaled(emo.label, strength(cfg.expressiveness, emo.valence, emo.arousal,
+                                                      emo.confidence))
 
     emphasis = []
     for n in frame.nuance:
@@ -102,10 +98,7 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
                 emphasis.append(word)
 
     pauses = [Pause(i, 150 if emo.arousal >= 0 else 300) for i, t in enumerate(tokens) if t.endswith(",")]
-    prosody = Prosody(rate=scale(1 + 0.25 * emo.arousal),
-                      pitch=scale(1 + 0.15 * emo.arousal + 0.10 * emo.valence),
-                      volume=scale(1 + 0.20 * emo.arousal),
-                      emphasis=emphasis, pauses=pauses)
+    prosody = Prosody(rate=rate, pitch=pitch, volume=volume, emphasis=emphasis, pauses=pauses)
 
     lively = emo.arousal > 0.5
     eye = EyeColour(rgb=EYE_PALETTE[emo.label], intensity=0.5 + 0.4 * (emo.arousal + 1) / 2,
