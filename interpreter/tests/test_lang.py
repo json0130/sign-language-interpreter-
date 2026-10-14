@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from interpreter.concepts import CONCEPTS, gloss, lookup_by_te_reo
+from interpreter.concepts import CONCEPTS, find_kupu, gloss, lookup_by_te_reo
 from interpreter.context import StaticContext
 from interpreter.contracts import (LANGS, SCHEMA_VERSION, SUPPORTED_SCHEMAS, Concept, InterpretationFrame,
                                    SignPlan, SpeechPlan, Voice)
@@ -97,6 +97,11 @@ class TestConcepts(unittest.TestCase):
             self.assertEqual(lookup_by_te_reo(w), "ck:whanau", w)
         self.assertEqual(lookup_by_te_reo("kia ora"), "ck:kia-ora")
         self.assertIsNone(lookup_by_te_reo("family"))
+
+    def test_find_kupu_handles_macrons_case_and_phrases(self):
+        found = find_kupu("Kia ora! My WHANAU and my whānau are at the hui, not the whanaunga.")
+        self.assertEqual(found, [("ck:whanau", "WHANAU"), ("ck:whanau", "whānau"), ("ck:hui", "hui"),
+                                 ("ck:kia-ora", "Kia ora")])
 
     def test_gloss(self):
         self.assertEqual(gloss("ck:whanau", "en-US"), "family")

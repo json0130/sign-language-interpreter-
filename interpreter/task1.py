@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from interpreter.concepts import find_kupu, gloss
 from interpreter.context import ContextProvider
 from interpreter.contracts import (LANGS, EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
                                    SpeechPlan, Voice)
@@ -32,18 +33,29 @@ class Task1Config:
     clarify_threshold: float = 0.5   # input_confidence below this -> ask for a repeat
 
 
-def _choose_words(frame: InterpretationFrame, ctx: ContextProvider) -> list:
-    """(english, te_reo) pairs the speaker prefers in te reo."""
-    return [(c.english, c.te_reo) for c in frame.concepts
-            if c.te_reo and ctx.prefers_te_reo(frame.speaker_id, c.slug)]
+def _choose_words(frame: InterpretationFrame, ctx: ContextProvider, lang: str) -> list:
+    """(from, to) whole-word swaps so each concept is spoken in the form the LISTENER knows.
+
+    Listener knows the kupu: a tagged concept's English word becomes the te reo form.
+    Listener does not: any known kupu in the text (tagged or not, 'whanau' and 'whānau' alike) becomes its plain
+    word for `lang`, from interpreter/concepts.py.
+    """
+    listener = frame.addressee_id
+    swaps = [(c.english, c.te_reo) for c in frame.concepts
+             if c.te_reo and ctx.listener_knows_te_reo(listener, c.slug)]
+    for slug, word in find_kupu(frame.text):
+        plain = gloss(slug, lang)
+        if plain and not ctx.listener_knows_te_reo(listener, slug):
+            swaps.append((word, plain))
+    return swaps
 
 
 def _swap(text: str, pairs: list) -> str:
     """Whole-word, case-insensitive replace, keeping a leading capital."""
-    for english, te_reo in pairs:
-        def repl(m: re.Match, te_reo: str = te_reo) -> str:
-            return te_reo[0].upper() + te_reo[1:] if m.group(0)[0].isupper() else te_reo
-        text = re.sub(rf"\b{re.escape(english)}\b", repl, text, flags=re.IGNORECASE)
+    for old, new in pairs:
+        def repl(m: re.Match, new: str = new) -> str:
+            return new[0].upper() + new[1:] if m.group(0)[0].isupper() else new
+        text = re.sub(rf"\b{re.escape(old)}\b", repl, text, flags=re.IGNORECASE)
     return text
 
 
@@ -55,7 +67,8 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     pulse. The pulse is a visual "please repeat" cue for the signer (a spoken request would not reach
     them); the spoken line is for the non-signer. The colour meaning must be validated with Deaf users.
 
-    Word choice: concept.english is swapped for concept.te_reo when ctx says the speaker prefers it.
+    Word choice follows the LISTENER (frame.addressee_id): te reo is spoken only where ctx says they know the
+    kupu, otherwise the plain English word ('whānau' becomes 'family'), whichever form the transcript used.
     Known limitation: no grammar rewriting, so "family is" becomes "whānau is".
 
     Prosody: the emotion's profile (prosody_profiles.PROFILES) scaled by
@@ -78,7 +91,7 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
         return SpeechPlan(frame_id=frame.frame_id, mode="clarify", utterance=CLARIFY_UTTERANCE,
                           emotion_label="neutral", voice=Voice(persona="robot", language=lang), eye=CLARIFY_EYE)
 
-    pairs = _choose_words(frame, ctx)
+    pairs = _choose_words(frame, ctx, lang)
     utterance = _swap(frame.text, pairs)
     tokens = utterance.split()
     stripped = [t.strip(_PUNCT).casefold() for t in tokens]

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from interpreter.context import StaticContext
 from interpreter.contracts import LANGS, Emotion, InterpretationFrame, Prosody
+from interpreter.emotion import CANONICAL_VA
 from interpreter.local_tts.config import MODELS_DIR
 from interpreter.local_tts.piper_engine import PiperEngine
 from interpreter.local_tts.playback import play
@@ -20,12 +21,7 @@ from interpreter.task1 import Task1Config, plan_speech
 HERE = Path(__file__).resolve().parent
 SWEEP_SENTENCE = "My whānau are coming to the hui tomorrow."
 SWEEP_CONFIDENCE = 0.9
-# emotion -> canonical (valence, arousal) for the sweep
-SWEEP_VA = {
-    "neutral": (0.0, 0.0), "happy": (0.7, 0.4), "excited": (0.7, 0.8), "calm": (0.4, -0.5),
-    "sad": (-0.7, -0.4), "apologetic": (-0.3, -0.1), "angry": (-0.7, 0.7), "anxious": (-0.5, 0.6),
-    "surprised": (0.3, 0.8), "confused": (-0.2, 0.2),
-}
+SWEEP_VA = CANONICAL_VA   # emotion -> canonical (valence, arousal) for the sweep
 
 
 def sweep_frames(sentence: str):

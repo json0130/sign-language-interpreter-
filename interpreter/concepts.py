@@ -3,9 +3,10 @@
 PLACEHOLDERS: every entry needs review by a te reo speaker or adviser before any real use.
 zh-CN glosses are left empty on purpose; they must be supplied and reviewed by fluent speakers.
 """
+import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 _ZH_NOTE = "to be supplied and reviewed by fluent speakers"
 
@@ -43,3 +44,21 @@ def gloss(slug: str, lang: str) -> Optional[str]:
     """Plain-word rendering of a concept in `lang`, or None if the concept or language is missing."""
     entry = CONCEPTS.get(slug)
     return entry.glosses.get(lang) if entry else None
+
+
+def _kupu_pattern(te_reo: str) -> str:
+    """Regex for a kupu in which every macron vowel also matches its plain vowel ('whānau' also matches 'whanau')."""
+    out = []
+    for ch in te_reo:
+        base = unicodedata.normalize("NFD", ch)[0]
+        out.append(f"[{base}{ch}]" if base != ch else re.escape(ch))
+    return "".join(out)
+
+
+_PATTERNS = {slug: re.compile(rf"\b{_kupu_pattern(e.te_reo)}\b", re.IGNORECASE) for slug, e in CONCEPTS.items()}
+
+
+def find_kupu(text: str) -> List[Tuple[str, str]]:
+    """[(slug, matched text)] for every known kupu in `text`, ignoring case and macrons; multi-word kupu such as
+    'kia ora' are found too."""
+    return [(slug, m.group(0)) for slug, pat in _PATTERNS.items() for m in pat.finditer(text)]

@@ -74,6 +74,27 @@ Every message is language-tagged (`contracts.LANGS`, schema 0.2). `Interpretatio
 
 `plan_speech` accepts `sign_to_speech` and `text_to_speech` frames and speaks in `target_lang` (argument, else the frame's). `interpreter/concepts.py` holds the `ck:` concept table (te reo form plus per-language glosses). All glosses are placeholders that need review by a te reo speaker or adviser, and the zh-CN glosses are empty until fluent speakers supply and review them.
 
+## Pipeline (transcript to spoken English)
+
+```
+sign transcript -> emotion backup -> KG context -> Task 1 plan -> local TTS
+   (frame)         emotion.py        kg/            task1.py       local_tts/
+```
+
+Run it (renders WAVs to `interpreter/audio_out/pipeline/<lang>/`; `--dry-run` prints plans and needs only `python3`):
+
+```
+interpreter/.venv/bin/python -m interpreter.run_pipeline
+interpreter/.venv/bin/python -m interpreter.run_pipeline --frames interpreter/mocks/frames_kg   # te reo transcript, weak emotion
+```
+
+- **Knowledge graph** (`interpreter/kg/`, standard library only): people, cultures and `ck:` concepts, with three edge kinds: `belongs_to_culture` (a tag, never a fact about the person), `culture_prior` and `knows_kupu` (weights 0 to 1). Every edge records its provenance (source, confidence, time), newer writes replace older ones, and the graph saves to JSON (`Graph.save` / `Graph.load`). `kg/demo.py` builds a small demo graph matching the mock frames. A stdlib port of the idea behind the ChatBox V5 graph module; the V5 copy is kept untracked in `kg/_v5_reference/`.
+- **Word choice follows the listener** (the frame's `addressee_id`): `KGContext.listener_knows_te_reo` is true when the listener has a `knows_kupu` edge at or above 0.5, or belongs to a culture whose prior for the kupu is at or above 0.5. If so the kupu is spoken ("whānau"); otherwise the plain English word is ("family"), whichever form the transcript used. Multi-word kupu such as "kia ora" are found, ignoring case and macrons. Because the rule is per listener, "Kia ora" becomes "Hello" for a listener the KG does not know.
+- **Emotion backup** (`emotion.py`): the recogniser's emotion is kept when its confidence is at least 0.4. Below that, simple English text rules (sorry, thanks, worried, and so on) give a label at confidence 0.5; if no rule matches the frame is unchanged.
+- **Speech:** Piper through `local_tts`. Piper conveys emotion only through rate, pitch and volume, which listeners found too subtle, so a TTS engine with real emotion input is still to be chosen (see `bakeoff/REPORT.md`; IndexTTS-2.5 is the shortlisted engine).
+
+Placeholders: the demo graph's culture priors are guesses, and which kupu a community or person knows needs review by Māori language advisers or speakers.
+
 ## Pepper test bench
 
 `interpreter/robot/` plays Task 1 output on a real Pepper (NAOqi) and runs a listening test. Needs the optional `qi` bindings for a real robot (`pip install qi`, or the Aldebaran Python 2.7 SDK); `--dry-run` needs nothing.
@@ -103,4 +124,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Step C2 (language-aware contracts and voices) added; awaiting sign-off. Next: NZ English adapter, then KG relationships.
+Status: Steps K1 (stdlib knowledge graph) and P1 (end-to-end pipeline) added; awaiting sign-off. TTS emotion engine parked (IndexTTS-2.5 shortlisted).

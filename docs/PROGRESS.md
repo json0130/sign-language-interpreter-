@@ -1,6 +1,6 @@
 # Progress and next steps
 
-Last updated: 2026-10-13. Repo history starts at the scaffold commit; earlier work lived on the `feature/sign-language-project` branch of ChatBox-companion-robot and was moved here with its commits.
+Last updated: 2026-10-15. Repo history starts at the scaffold commit; earlier work lived on the `feature/sign-language-project` branch of ChatBox-companion-robot and was moved here with its commits.
 
 ## What this project is
 
@@ -19,7 +19,15 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | 2a | Task 1 rule-based planner (`task1.py`): clarify when `input_confidence < 0.5`, te reo word choice via a `ContextProvider`, prosody from arousal/valence scaled by expressiveness x emotion confidence, eye-colour palette, pronunciation lexicon. Realistic emotion confidences added to the mock frames. | +12 |
 | 2b-i | TTS adapters (`interpreter/tts/`): NAOqi tagged string, Amazon Polly SSML (neural), Azure SSML. String builders only, no network or keys. Optional `ipa` field on `LexiconEntry`. Preview: `python3 -m interpreter.run_tts_preview`. | +13 |
 
-Total: 45 tests, standard library only. Run from the repo root: `python3 -m unittest discover -s interpreter/tests -t . -v`.
+| 2b-ii | Pepper test bench (`interpreter/robot/`): allowlisted speech and LED transport, read-only probe, listening-test pack. Paused; not run on the robot yet. | +12 |
+| L1 | Local speech output with Piper (`interpreter/local_tts/`): rate and pitch from `length_scale` plus a sample-rate relabel, pauses, volume, `run_local`. | +12 |
+| C2 | Language-aware contracts (schema 0.2: `text`, `source_lang`, `target_lang`, `Concept.glosses`), `concepts.py`, voice registry (en-NZ, en-US; zh-CN reserved). | +23 |
+| L2 | Stronger per-emotion prosody profiles (`prosody_profiles.py`), expressiveness dial, `--sweep`. Piper alone was judged too subtle. | +13 |
+| B2 | TTS emotion bake-off (`interpreter/bakeoff/`, report in `REPORT.md`): by ear IndexTTS-2.5 best (too exaggerated at full strength), CosyVoice second, Kokoro/Parler/Chatterbox out. Engine choice and integration parked. | |
+| K1 | Stdlib knowledge graph (`interpreter/kg/`) and `KGContext`: does the listener know this kupu? | +10 |
+| P1 | End-to-end pipeline (`run_pipeline`): emotion backup rules, word choice by listener ("whānau" to "family" unless the listener knows it), Piper TTS. Fixed `text_to_speech` routing. | +15 |
+
+Total: 131 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 
@@ -47,7 +55,9 @@ Nothing below has been checked on a real robot or with a real speaker. Do not tr
 - **Polly / Azure:** neural prosody limits, Azure en-NZ voice name and style support.
 - **Mock data:** all frames are fictional, written by hand.
 
-## Next steps
+## Next steps (as of 2026-10-15)
+
+The numbered list below is from 2026-10-13 and partly done (steps 1 and 4 are overtaken by 2b-ii and K1/P1). Current priorities: a directed person-to-person relationship edge in the KG (relation type, derived inverse, familiarity, register hint); Task 2 (speech to sign); an emotion TTS integrated behind the speech sink (IndexTTS-2.5 at about 0.5 to 0.7 strength per emotion; its happy and surprised mappings need work).
 
 1. **Step 2b-ii: Pepper test bench.** Allowlisted transport (speech and LEDs only), `PepperOutput`, a read-only probe, a listening-test pack built from the mock frames, and a CSV-writing listening test. First action on the robot is the read-only probe: it answers whether an NZ voice exists, whether `FaceLeds` is available, and whether Autonomous Life is on (it can override eye colours).
 2. **Run the listening test** with hearing NZ English listeners, then choose the TTS backend (NAOqi vs Polly vs Azure) from the results, and tune expressiveness and the prosody formulas.

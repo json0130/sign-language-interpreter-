@@ -1,0 +1,14 @@
+{
+  "frame_id": "f-011",
+  "direction": "sign_to_speech",
+  "speaker_id": "person:aroha",
+  "addressee_id": "person:visitor_01",
+  "text": "Kia ora, my whānau are coming to the hui tomorrow. Thanks so much for having us!",
+  "emotion": {"label": "neutral", "valence": 0.0, "arousal": 0.0, "confidence": 0.2},
+  "nuance": [{"kind": "greeting"}, {"kind": "thanks"}],
+  "concepts": [{"slug": "ck:whanau", "english": "family", "te_reo": "whānau"},
+               {"slug": "ck:hui", "english": "meeting", "te_reo": "hui"},
+               {"slug": "ck:kia-ora", "english": "hello", "te_reo": "kia ora"}],
+  "input_confidence": 0.9,
+  "setting": "lab_open_day"
+}

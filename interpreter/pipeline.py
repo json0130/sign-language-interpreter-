@@ -11,7 +11,7 @@ class Pipeline:
         self.speech_sink, self.sign_sink = speech_sink, sign_sink
 
     def process(self, frame: InterpretationFrame):
-        if frame.direction == "sign_to_speech":
+        if frame.direction in ("sign_to_speech", "text_to_speech"):   # both end in Pepper speaking
             handler, plan_type, deliver = self.task1, SpeechPlan, self.speech_sink.speak
         else:
             handler, plan_type, deliver = self.task2, SignPlan, self.sign_sink.send

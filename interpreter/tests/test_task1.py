@@ -35,10 +35,10 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(p.prosody.emphasis, ["family"])
         self.assertEqual(p.lexicon, [])
 
-    def test_per_person_override_and_leading_capital(self):
+    def test_per_listener_override_and_leading_capital(self):
         fr = f("f-001"); fr.text = "Family is coming."
         self.assertEqual(plan_speech(fr, CTX).utterance, "Whānau is coming.")
-        ctx = StaticContext({("person:aroha", "ck:whanau"): False}, default=True)
+        ctx = StaticContext({("person:visitor_01", "ck:whanau"): False}, default=True)   # f-001 listener
         self.assertIn("family", plan_speech(f("f-001"), ctx).utterance)
         self.assertIn("hui", plan_speech(f("f-001"), ctx).utterance)
 
