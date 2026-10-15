@@ -1,14 +1,17 @@
+import contextlib
 import copy
+import io
 import unittest
 from pathlib import Path
 
 from interpreter.contracts import InterpretationFrame
-from interpreter.emotion import CANONICAL_VA, MIN_CONFIDENCE, RULE_CONFIDENCE, RULES, guess_emotion, refine_emotion
+from interpreter.emotion import (CANONICAL_VA, MIN_CONFIDENCE, RULE_CONFIDENCE, RULES, guess_emotion, match_rule,
+                                 refine_emotion)
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
 from interpreter.mocks.mock_recogniser import load_frames
 from interpreter.pipeline import Pipeline
-from interpreter.run_pipeline import build_pipeline
+from interpreter.run_pipeline import build_pipeline, main
 from interpreter.task1 import Task1Config, plan_speech
 from interpreter.tests.test_contracts import frame_d1, frame_d2
 
@@ -60,6 +63,10 @@ class TestEmotionBackup(unittest.TestCase):
         self.assertEqual({l for l, _ in RULES}, set(examples))
         for label, text in examples.items():
             self.assertEqual(guess_emotion(text), label, text)
+
+    def test_match_rule_returns_the_matched_words(self):
+        self.assertEqual(match_rule("Thanks so much!"), ("happy", "Thanks"))
+        self.assertIsNone(match_rule("The results are in."))
 
     def test_deterministic(self):
         f = frame("Sorry, I am worried.", confidence=0.1)
@@ -127,6 +134,43 @@ class TestWholePipeline(unittest.TestCase):
         d = frame_d2(); d["direction"] = "text_to_speech"
         (plan,), _ = self.run_frames([InterpretationFrame.from_dict(d)])
         self.assertEqual(plan.mode, "interpret")
+
+
+def run_cli(*argv: str) -> str:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        main(list(argv))
+    return buf.getvalue()
+
+
+class TestNarratedRun(unittest.TestCase):
+    def test_demo_prints_every_stage_with_reasons(self):
+        out = run_cli("--demo", "--dry-run")
+        for want in ("KNOWLEDGE GRAPH: 9 nodes, 6 edges", "[1/5] INPUT", "[2/5] EMOTION",
+                     'text rule matched "Thanks" -> happy', "[3/5] KG", "does NOT know it (no knows_kupu edge",
+                     '"whānau" -> "family"', "[4/5] PLAN", "Hello, my family are coming to the meeting tomorrow.",
+                     "x strength", "[5/5] SPEECH", "dry run", "done: 1 speech plan(s), 0 sign plan(s)"):
+            self.assertIn(want, out)
+
+    def test_knowing_listener_is_explained(self):
+        out = run_cli("--dry-run", "--only", "f-003")
+        self.assertIn('listener KNOWS it (knows_kupu edge, weight 0.8) -> say "whānau"', out)
+        self.assertIn("keep the recogniser's sad", out)
+
+    def test_clarify_and_sign_frames(self):
+        out = run_cli("--dry-run", "--only", "f-005,f-006")
+        self.assertIn("skipped: this frame becomes a clarification request", out)
+        self.assertIn("[2/2] TASK 2", out)
+        self.assertIn("1 speech plan(s), 1 sign plan(s)", out)
+
+    def test_quiet_prints_no_stages(self):
+        out = run_cli("--dry-run", "--quiet", "--only", "f-001")
+        self.assertNotIn("[1/5]", out)
+        self.assertIn('out: "My family is coming to the meeting tomorrow."', out)
+
+    def test_unknown_frame_id_exits(self):
+        with self.assertRaises(SystemExit):
+            run_cli("--dry-run", "--only", "f-999")
 
 
 if __name__ == "__main__":

@@ -25,9 +25,9 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | L2 | Stronger per-emotion prosody profiles (`prosody_profiles.py`), expressiveness dial, `--sweep`. Piper alone was judged too subtle. | +13 |
 | B2 | TTS emotion bake-off (`interpreter/bakeoff/`, report in `REPORT.md`): by ear IndexTTS-2.5 best (too exaggerated at full strength), CosyVoice second, Kokoro/Parler/Chatterbox out. Engine choice and integration parked. | |
 | K1 | Stdlib knowledge graph (`interpreter/kg/`) and `KGContext`: does the listener know this kupu? | +10 |
-| P1 | End-to-end pipeline (`run_pipeline`): emotion backup rules, word choice by listener ("whānau" to "family" unless the listener knows it), Piper TTS. Fixed `text_to_speech` routing. | +15 |
+| P1 | End-to-end pipeline (`run_pipeline`): emotion backup rules, word choice by listener ("whānau" to "family" unless the listener knows it), Piper TTS. Fixed `text_to_speech` routing. | +22 |
 
-Total: 131 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 138 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 

@@ -5,7 +5,7 @@ signal, not an emotion recogniser, and they read English wording only.
 """
 import re
 from dataclasses import replace
-from typing import Optional
+from typing import Optional, Tuple
 
 from interpreter.contracts import Emotion, InterpretationFrame
 
@@ -31,12 +31,19 @@ RULES = [
 ]
 
 
+def match_rule(text: str) -> Optional[Tuple[str, str]]:
+    """(label, the text that matched) for the first rule that matches `text`, or None."""
+    for label, pattern in RULES:
+        m = re.search(pattern, text, flags=re.IGNORECASE)
+        if m:
+            return label, m.group(0)
+    return None
+
+
 def guess_emotion(text: str) -> Optional[str]:
     """The emotion label of the first rule that matches `text`, or None."""
-    for label, pattern in RULES:
-        if re.search(pattern, text, flags=re.IGNORECASE):
-            return label
-    return None
+    found = match_rule(text)
+    return found[0] if found else None
 
 
 def refine_emotion(frame: InterpretationFrame) -> InterpretationFrame:

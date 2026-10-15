@@ -96,6 +96,18 @@ class TestKGContext(unittest.TestCase):
         self.g.link("person:b", "ck:whanau", "knows_kupu", 0.9)       # no culture tag, but knows it
         self.assertTrue(self.ctx.listener_knows_te_reo("person:b", "ck:whanau"))
 
+    def test_explain_gives_the_reason(self):
+        self.g.link("person:a", "culture:maori", "belongs_to_culture")
+        self.assertEqual(self.ctx.explain("person:zzz", "ck:whanau"), (False, "person:zzz is not in the graph"))
+        self.assertIn("culture tag(s) culture:maori", self.ctx.explain("person:a", "ck:whanau")[1])
+        self.g.link("culture:maori", "ck:whanau", "culture_prior", 0.9)
+        self.assertEqual(self.ctx.explain("person:a", "ck:whanau"),
+                         (True, "belongs to culture:maori, whose prior for it is 0.9"))
+        self.g.link("person:a", "ck:whanau", "knows_kupu", 0.2)
+        self.assertEqual(self.ctx.explain("person:a", "ck:whanau"), (False, "knows_kupu edge, weight 0.2"))
+        self.g.ensure("person", "person:c", "C")
+        self.assertEqual(self.ctx.explain("person:c", "ck:whanau"), (False, "no knows_kupu edge and no culture tag"))
+
     def test_demo_graph_matches_the_mock_frames(self):
         ctx = KGContext(demo_graph())
         self.assertTrue(ctx.listener_knows_te_reo("person:aroha", "ck:hui"))

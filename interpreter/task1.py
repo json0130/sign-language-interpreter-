@@ -33,20 +33,20 @@ class Task1Config:
     clarify_threshold: float = 0.5   # input_confidence below this -> ask for a repeat
 
 
-def _choose_words(frame: InterpretationFrame, ctx: ContextProvider, lang: str) -> list:
-    """(from, to) whole-word swaps so each concept is spoken in the form the LISTENER knows.
+def choose_words(frame: InterpretationFrame, ctx: ContextProvider, lang: str) -> list:
+    """(from, to, slug) whole-word swaps so each concept is spoken in the form the LISTENER knows.
 
     Listener knows the kupu: a tagged concept's English word becomes the te reo form.
     Listener does not: any known kupu in the text (tagged or not, 'whanau' and 'whānau' alike) becomes its plain
     word for `lang`, from interpreter/concepts.py.
     """
     listener = frame.addressee_id
-    swaps = [(c.english, c.te_reo) for c in frame.concepts
+    swaps = [(c.english, c.te_reo, c.slug) for c in frame.concepts
              if c.te_reo and ctx.listener_knows_te_reo(listener, c.slug)]
     for slug, word in find_kupu(frame.text):
         plain = gloss(slug, lang)
         if plain and not ctx.listener_knows_te_reo(listener, slug):
-            swaps.append((word, plain))
+            swaps.append((word, plain, slug))
     return swaps
 
 
@@ -91,7 +91,7 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
         return SpeechPlan(frame_id=frame.frame_id, mode="clarify", utterance=CLARIFY_UTTERANCE,
                           emotion_label="neutral", voice=Voice(persona="robot", language=lang), eye=CLARIFY_EYE)
 
-    pairs = _choose_words(frame, ctx, lang)
+    pairs = [(old, new) for old, new, _ in choose_words(frame, ctx, lang)]
     utterance = _swap(frame.text, pairs)
     tokens = utterance.split()
     stripped = [t.strip(_PUNCT).casefold() for t in tokens]

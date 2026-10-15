@@ -81,12 +81,18 @@ sign transcript -> emotion backup -> KG context -> Task 1 plan -> local TTS
    (frame)         emotion.py        kg/            task1.py       local_tts/
 ```
 
-Run it (renders WAVs to `interpreter/audio_out/pipeline/<lang>/`; `--dry-run` prints plans and needs only `python3`):
+Run it from the repo root. Every frame prints numbered stages showing each decision and why (input, emotion, KG, plan, speech):
 
 ```
-interpreter/.venv/bin/python -m interpreter.run_pipeline
-interpreter/.venv/bin/python -m interpreter.run_pipeline --frames interpreter/mocks/frames_kg   # te reo transcript, weak emotion
+python3 -m interpreter.run_pipeline --demo --dry-run          # the te reo demo, stages only; plain python3 is enough
+interpreter/.venv/bin/python -m interpreter.run_pipeline --demo          # same, and renders the WAV (not played)
+interpreter/.venv/bin/python -m interpreter.run_pipeline --demo --play   # render and play it
+interpreter/.venv/bin/python -m interpreter.run_pipeline                 # all 10 mock frames -> audio_out/pipeline/<lang>/
+python3 -m interpreter.run_pipeline --dry-run --only f-003,f-005,f-006   # chosen frames only (a KG-known listener, a clarify, a sign frame)
+python3 -m interpreter.run_pipeline --dry-run --quiet                    # one line in, one line out per frame
 ```
+
+Other flags: `--kg FILE` (a graph saved with `Graph.save`; default is the demo graph), `--target-lang en-NZ|en-US`, `--expressiveness 0..2`. What to check in the trace: stage 2 says whether the recogniser's emotion was kept or replaced by a text rule (and which words matched); stage 3 lists each kupu, whether this listener knows it and why (a `knows_kupu` edge, or a culture tag with a prior), and the word it will say; stage 4 shows the final sentence, the emotion profile and strength, and the resulting rate, pitch and volume; stage 5 shows the audio length and file.
 
 - **Knowledge graph** (`interpreter/kg/`, standard library only): people, cultures and `ck:` concepts, with three edge kinds: `belongs_to_culture` (a tag, never a fact about the person), `culture_prior` and `knows_kupu` (weights 0 to 1). Every edge records its provenance (source, confidence, time), newer writes replace older ones, and the graph saves to JSON (`Graph.save` / `Graph.load`). `kg/demo.py` builds a small demo graph matching the mock frames. A stdlib port of the idea behind the ChatBox V5 graph module; the V5 copy is kept untracked in `kg/_v5_reference/`.
 - **Word choice follows the listener** (the frame's `addressee_id`): `KGContext.listener_knows_te_reo` is true when the listener has a `knows_kupu` edge at or above 0.5, or belongs to a culture whose prior for the kupu is at or above 0.5. If so the kupu is spoken ("whānau"); otherwise the plain English word is ("family"), whichever form the transcript used. Multi-word kupu such as "kia ora" are found, ignoring case and macrons. Because the rule is per listener, "Kia ora" becomes "Hello" for a listener the KG does not know.
