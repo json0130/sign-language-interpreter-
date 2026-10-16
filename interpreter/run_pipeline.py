@@ -14,6 +14,7 @@ only through rate, pitch and volume; a better emotion TTS is still to be chosen.
 """
 import argparse
 from pathlib import Path
+from typing import Optional
 
 from interpreter.baseline import baseline_task2
 from interpreter.concepts import CONCEPTS, find_kupu, gloss
@@ -26,7 +27,7 @@ from interpreter.kg.provider import KGContext
 from interpreter.mocks.mock_recogniser import load_frames
 from interpreter.mocks.stub_sign_generator import StubSignGenerator
 from interpreter.pipeline import Pipeline
-from interpreter.prosody_profiles import PROFILES, strength
+from interpreter.emotion_flow import SpeakerState, describe
 from interpreter.run_local import expressiveness_arg
 from interpreter.task1 import Task1Config, choose_words, plan_speech
 from interpreter.testset import DEFAULT_TESTSET, load_testset, make_row
@@ -63,7 +64,7 @@ def describe_graph(graph: Graph) -> None:
     print()
 
 
-def make_task1(ctx: KGContext, cfg: Task1Config, target_lang, trace: Tracer):
+def make_task1(ctx: KGContext, cfg: Task1Config, target_lang, trace: Tracer, state: Optional[SpeakerState] = None):
     """The Task 1 handler: emotion backup, KG word choice, plan. Narrates each stage as it runs."""
 
     def task1(frame):
@@ -105,7 +106,10 @@ def make_task1(ctx: KGContext, cfg: Task1Config, target_lang, trace: Tracer):
             lines.append("word changes: " + (", ".join(changes) if changes else "none"))
             trace.stage(3, 5, "KG", *lines)
 
-        plan = plan_speech(refined, ctx, cfg, target_lang=target_lang)
+        previous = state.get(frame.speaker_id) if state else None
+        plan = plan_speech(refined, ctx, cfg, target_lang=target_lang, previous=previous)
+        if state and plan.segments:
+            state.update(frame.speaker_id, plan.segments[-1].valence, plan.segments[-1].arousal)
         p = plan.prosody
         if plan.mode == "clarify":
             trace.stage(4, 5, "PLAN", f"clarify: input confidence {frame.input_confidence:.2f} < "
@@ -113,19 +117,17 @@ def make_task1(ctx: KGContext, cfg: Task1Config, target_lang, trace: Tracer):
                         f'says: "{plan.utterance}"')
         else:
             em = refined.emotion
-            s = strength(cfg.expressiveness, em.valence, em.arousal, em.confidence)
-            pr, pp, pv = PROFILES[em.label]
+            spans = ", ".join(f"word {x.start_word}: {x.emotion.label}" for x in refined.emotion_flow)
             extras = []
             if p.emphasis:
                 extras.append("stress " + ", ".join(p.emphasis))
-            if p.pauses:
-                extras.append("pauses " + ", ".join(f"{x.ms} ms after word {x.after_word_index}" for x in p.pauses))
-            if plan.lexicon:
-                extras.append("pronunciation: " + ", ".join(f'{x.word} -> "{x.respelling}"' for x in plan.lexicon))
             trace.stage(4, 5, "PLAN", f'says: "{plan.utterance}"',
-                        f"delivery: {em.label} profile (rate {pr:g}, pitch {pp:g}, volume {pv:g}) x strength {s:.2f} "
-                        f"[expressiveness {cfg.expressiveness:g}, emotion intensity and confidence]",
-                        f"  -> rate {p.rate:.2f}, pitch {p.pitch:.2f}, volume {p.volume:.2f}",
+                        f"sentence emotion {em.label} (confidence {em.confidence:.2f})"
+                        + (f"; recogniser emotion changes at {spans}" if spans else "")
+                        + (f"; carried from this speaker's last sentence: valence {previous[0]:+.2f}, "
+                           f"arousal {previous[1]:+.2f}" if previous else ""),
+                        f"emotion flow ({len(plan.segments)} clause{'s' if len(plan.segments) != 1 else ''}):",
+                        *("  " + line for line in describe(plan)),
                         *(["extras: " + "; ".join(extras)] if extras else []),
                         f"eye colour {plan.eye.rgb} {plan.eye.pattern} (the local TTS ignores this)")
         return plan
@@ -156,9 +158,10 @@ class Recorder:
 
 
 def build_pipeline(graph: Graph, speech_sink, sign_sink, cfg: Task1Config, target_lang=None,
-                   trace: Tracer = Tracer(False)) -> Pipeline:
+                   trace: Tracer = Tracer(False), state: Optional[SpeakerState] = None) -> Pipeline:
+    """state: a SpeakerState to carry each speaker's emotion from one sentence to the next (None = off)."""
     ctx = KGContext(graph)
-    return Pipeline(make_task1(ctx, cfg, target_lang, trace), make_task2(trace), speech_sink, sign_sink)
+    return Pipeline(make_task1(ctx, cfg, target_lang, trace, state), make_task2(trace), speech_sink, sign_sink)
 
 
 def main(argv=None) -> None:
@@ -178,6 +181,10 @@ def main(argv=None) -> None:
     ap.add_argument("--target-lang", choices=[l for l in LANGS if l != "zh-CN"])
     ap.add_argument("--expressiveness", type=expressiveness_arg, default=Task1Config.expressiveness)
     ap.add_argument("--play", action="store_true", help="play each WAV after rendering")
+    ap.add_argument("--tts", choices=("kokoro", "piper"), help="local voice engine (default: config.TTS_ENGINE, kokoro)")
+    ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
+    ap.add_argument("--carry", action="store_true",
+                    help="carry each speaker's emotion from one sentence to the next (off: every sentence starts fresh)")
     ap.add_argument("--dry-run", action="store_true", help="print the stages only; no TTS")
     ap.add_argument("--quiet", action="store_true", help="one line in, one line out per frame")
     args = ap.parse_args(argv)
@@ -189,11 +196,15 @@ def main(argv=None) -> None:
         sink = Recorder()
     else:
         from interpreter.local_tts.sink import LocalSpeechSink   # needs the venv (piper), so imported lazily
-        sink = LocalSpeechSink(args.out)
+        engine = None
+        if args.voice:
+            from interpreter.local_tts.kokoro_engine import KokoroEngine
+            engine = KokoroEngine(args.voice)
+        sink = LocalSpeechSink(args.out, engine=engine, tts=args.tts)
         from interpreter.local_tts.playback import play
     cfg = Task1Config(expressiveness=args.expressiveness)
     sign_sink = StubSignGenerator()
-    pipe = build_pipeline(graph, sink, sign_sink, cfg, args.target_lang, trace)
+    pipe = build_pipeline(graph, sink, sign_sink, cfg, args.target_lang, trace, SpeakerState() if args.carry else None)
 
     notes = {}
     if args.text:
@@ -229,9 +240,12 @@ def main(argv=None) -> None:
                 trace.stage(5, 5, "SPEECH", "dry run: no audio rendered")
             else:
                 r = sink.results[-1]
-                trace.stage(5, 5, "SPEECH", f"voice {plan.voice.language}, {r.duration_s:.2f} s of audio, "
-                            f"applied rate {r.params['rate']:.2f} pitch {r.params['pitch']:.2f} "
-                            f"volume {r.params['volume']:.2f}", *(f"note: {n}" for n in r.notes), f"file: {r.path}")
+                parts = r.params.get("segments") or [{**r.params, "duration_s": r.duration_s}]
+                trace.stage(5, 5, "SPEECH", f"{sink.voice_name(plan.voice.language)} ({plan.voice.language}), "
+                            f"{r.duration_s:.2f} s of audio",
+                            *(f"clause {k}: rate {x['rate']:.2f} pitch {x['pitch']:.2f} volume {x['volume']:.2f}, "
+                              f"{x['duration_s']:.2f} s" for k, x in enumerate(parts, start=1)),
+                            *(f"note: {n}" for n in r.notes), f"file: {r.path}")
                 if args.play:
                     trace.stage(5, 5, "SPEECH", "playing...")
                     play(r.path)

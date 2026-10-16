@@ -101,29 +101,27 @@ Other flags: `--kg FILE` (a graph saved with `Graph.save`; default is the demo g
 
 Placeholders: the demo graph's culture priors are guesses, and which kupu a community or person knows needs review by Māori language advisers or speakers.
 
-## Test sentences and emotion flow
+## Test sentences, emotion flow and voice
 
-**Test sentences** live in one file, `interpreter/mocks/testset.csv` (16 rows: English only, and English with some kupu Māori; different listeners; weak-emotion cases; a few with emotion-flow markers). Edit it in any spreadsheet or text editor. Columns: `id, mix, text, emotion, confidence, listener, concepts, notes` (see `interpreter/testset.py` for details and optional extras). Then:
-
-```
-interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play              # every sentence: stages, then it is spoken
-interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only t08,t09 --play
-interpreter/.venv/bin/python -m interpreter.run_pipeline --testset my_sentences.csv --play
-interpreter/.venv/bin/python -m interpreter.run_pipeline --text "Kia ora, my whānau loved the kai!" \
-    --listener person:aroha --emotion excited --confidence 0.8 --play                   # one sentence, typed in
-```
-
-Each sentence prints its "listen for" note, the five stages, then plays; a summary table ends the run. Listeners in the demo graph: `person:aroha` and `person:rawiri` (tagged Māori, so te reo is kept), `person:staff_01` (knows whānau only), `person:visitor_01` and `person:visitor_02` (no te reo, so kupu are glossed). Known kupu are in `interpreter/concepts.py`; other te reo words (for example "koro") pass through unchanged.
-
-**Emotion flow** (`interpreter/emotion_flow.py`, standalone, not yet used by the pipeline): one emotion per clause instead of one per sentence. Clauses break at sentence punctuation and before ", but" / ", so" style joins. A clause's emotion comes from an authored `{emotion}` marker in the text, else a text rule blended with the sentence emotion, else the sentence emotion; unmarked clauses keep 30% of the previous one so the voice does not jump, and `--carry` carries each speaker's state from one sentence to the next. Delivery is a smooth blend of the emotion profiles, so in-between emotions get in-between rate, pitch and volume.
+**Test sentences** live in one file, `interpreter/mocks/testset.csv` (26 rows). Every sentence is pure English or English with a few kupu Māori that the KG can replace (kia ora, whānau, hui, kai, mahi, tamariki, whare, kōrero, koha), in four groups: `e` pure English, `k` English with kupu for different listeners, `f` sentences where the signer's emotion changes part way (written as `{emotion}` markers), and `r` sentences whose clauses change emotion through their own words. Columns: `id, mix, text, emotion, confidence, listener, concepts, notes` (see `interpreter/testset.py`).
 
 ```
-python3 -m interpreter.emotion_flow --testset --only t12,t13,t14                       # print the clause-by-clause flow
-interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only t12 --play    # play single-emotion, then flow
-interpreter/.venv/bin/python -m interpreter.emotion_flow --text "{happy}Kia ora, {sad}but koro could not come." --play
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play                  # every sentence: stages, then spoken
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only f01,f02,r01 --play
+interpreter/.venv/bin/python -m interpreter.run_pipeline --text "{happy}Kia ora, {sad}but my nan could not come." --play
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only f01 --voice af_heart --play   # try another voice
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --tts piper --play      # the old Piper voice
 ```
 
-The flow tool works on the text as written (no KG word choice). Rendered files go to `interpreter/audio_out/flow/<lang>/` (`<id>-single.wav` and `<id>-flow.wav`; the per-clause parts are in `parts/`). Once it sounds right it will be wired into Task 1 and the speech sink.
+Each sentence prints its "listen for" note and the five stages, then plays. Stage 4 shows the **emotion flow**: the sentence split into clauses, each with its own emotion (from the recogniser's span, a text rule, or the sentence emotion), valence/arousal and delivery (rate, pitch, volume). Stage 5 shows the voice and what was applied to each clause. A summary table ends the run. `--carry` carries each speaker's emotion from one sentence to the next (off by default, so every test sentence starts fresh). Listeners in the demo graph: `person:aroha`, `person:rawiri` (tagged Māori: te reo kept), `person:staff_01` (knows whānau only), `person:visitor_01`, `person:visitor_02` (no te reo: kupu replaced with English).
+
+**Emotion flow** (`interpreter/emotion_flow.py`; contract schema 0.3: `InterpretationFrame.emotion_flow` spans in, `SpeechPlan.segments` out). Clauses break at `. ! ? ;`, before ", but" / ", so" / ", although" / ", and then", and where a recogniser span starts. Unmarked clauses keep 30% of the previous clause so the voice does not jump. Delivery is a smooth blend of the emotion profiles. The renderer speaks each clause with its own delivery and joins them with a 120 ms gap. To compare one emotion against the flow for the same sentence:
+
+```
+interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only f01 --play         # plays single, then flow
+```
+
+**Voice:** the default local engine is now **Kokoro** (`hexgrad/Kokoro-82M`, Apache-2.0), which sounds more natural than Piper. Kokoro has no emotion input of its own; the planner's rate, pitch and volume are applied on top, clause by clause. en-NZ uses `bf_emma` (the best-graded British voice; there is no NZ voice) and en-US uses `af_heart` (Kokoro's best-graded voice). Change them in `interpreter/local_tts/config.py` (`KOKORO_VOICES`, `TTS_ENGINE`). Kokoro is installed in `interpreter/.venv` and downloads its weights on first use. No Māori pronunciation respellings are applied any more; kupu are replaced with English for listeners who do not know them, and spoken as written otherwise.
 
 ## Pepper test bench
 
@@ -154,4 +152,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Steps T1 (test sentences) and F1 (standalone emotion flow) added; awaiting listening check. Next: wire the emotion flow into the pipeline once it sounds right.
+Status: Steps T2 (26 test sentences), F2 (emotion flow in the pipeline, schema 0.3) and V1 (Kokoro voice) added; awaiting listening check.

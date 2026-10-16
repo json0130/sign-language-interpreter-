@@ -19,7 +19,7 @@ def f(frame_id: str) -> InterpretationFrame:
 
 
 class RuleTests(unittest.TestCase):
-    def test_f001_word_choice_emphasis_prosody_eye_lexicon(self):
+    def test_f001_word_choice_emphasis_prosody_eye_segments(self):
         p = plan_speech(f("f-001"), CTX)
         self.assertEqual(p.mode, "interpret")
         self.assertEqual(p.utterance, "My whānau is coming to the hui tomorrow.")
@@ -27,7 +27,8 @@ class RuleTests(unittest.TestCase):
         self.assertGreater(p.prosody.rate, 1)
         self.assertGreater(p.prosody.pitch, 1)
         self.assertEqual(p.eye.pattern, "pulse")
-        self.assertEqual({e.word for e in p.lexicon}, {"whānau", "hui"})
+        self.assertEqual(p.lexicon, [])                     # no pronunciation respellings any more
+        self.assertEqual(" ".join(x.text for x in p.segments), p.utterance)
 
     def test_no_te_reo_preference_leaves_text_alone(self):
         p = plan_speech(f("f-001"), StaticContext(default=False))

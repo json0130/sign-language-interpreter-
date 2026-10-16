@@ -5,13 +5,13 @@ content; its own voice is used only for clarification. Rules only: no KG, PAD, L
 """
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from interpreter.concepts import find_kupu, gloss
 from interpreter.context import ContextProvider
-from interpreter.contracts import (LANGS, EyeColour, InterpretationFrame, LexiconEntry, Pause, Prosody,
-                                   SpeechPlan, Voice)
-from interpreter.lexicon import LEXICON, lookup, lookup_ipa
+from interpreter.contracts import (LANGS, EyeColour, InterpretationFrame, Pause, Prosody, SpeechPlan,
+                                   SpeechSegment, Voice)
+from interpreter.emotion_flow import delivery, flow
 from interpreter.prosody_profiles import scaled, strength
 
 # PLACEHOLDERS: colour-emotion associations vary between people and cultures; check them in the
@@ -50,12 +50,6 @@ def choose_words(frame: InterpretationFrame, ctx: ContextProvider, lang: str) ->
     return swaps
 
 
-def lexicon_for(utterance: str) -> list:
-    """Pronunciation entries (lexicon.py) for the kupu that appear in `utterance`."""
-    return [LexiconEntry(w, lookup(w), ipa=lookup_ipa(w)) for w in LEXICON
-            if re.search(rf"\b{re.escape(w)}\b", utterance, flags=re.IGNORECASE)]
-
-
 def _swap(text: str, pairs: list) -> str:
     """Whole-word, case-insensitive replace, keeping a leading capital."""
     for old, new in pairs:
@@ -65,8 +59,8 @@ def _swap(text: str, pairs: list) -> str:
     return text
 
 
-def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
-                cfg: Optional[Task1Config] = None, target_lang: Optional[str] = None) -> SpeechPlan:
+def plan_speech(frame: InterpretationFrame, ctx: ContextProvider, cfg: Optional[Task1Config] = None,
+                target_lang: Optional[str] = None, previous: Optional[Tuple[float, float]] = None) -> SpeechPlan:
     """Plan how Pepper speaks and shows the signer's emotion.
 
     Clarify: if input_confidence < cfg.clarify_threshold, return the robot-voice line plus an amber
@@ -77,9 +71,11 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     kupu, otherwise the plain English word ('whānau' becomes 'family'), whichever form the transcript used.
     Known limitation: no grammar rewriting, so "family is" becomes "whānau is".
 
-    Prosody: the emotion's profile (prosody_profiles.PROFILES) scaled by
-    expressiveness x intensity x confidence (see prosody_profiles.strength). Eye colour comes
-    from EYE_PALETTE.
+    Prosody: plan.prosody is the sentence emotion's profile (prosody_profiles.PROFILES) scaled by
+    expressiveness x intensity x confidence (see prosody_profiles.strength), for backends that take one setting.
+    plan.segments is the emotion flow (emotion_flow.py): one clause each, with its own emotion (the recogniser's
+    span, a text rule, or the sentence emotion) and delivery. `previous` is the speaker's last (valence, arousal),
+    for carry-over between sentences. Eye colour comes from EYE_PALETTE. No pronunciation respellings are added.
 
     Language: speaks in `target_lang or frame.target_lang`. en-NZ and en-US plan identically and set
     Voice.language; zh-CN is reserved and raises NotImplementedError.
@@ -98,7 +94,9 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
                           emotion_label="neutral", voice=Voice(persona="robot", language=lang), eye=CLARIFY_EYE)
 
     pairs = [(old, new) for old, new, _ in choose_words(frame, ctx, lang)]
-    utterance = _swap(frame.text, pairs)
+    clauses = flow(frame.text, frame.emotion, frame.emotion_flow, previous)   # on the words as signed
+    spoken = [_swap(c.text, pairs) for c in clauses]                           # then the listener's word choice
+    utterance = " ".join(spoken)
     tokens = utterance.split()
     stripped = [t.strip(_PUNCT).casefold() for t in tokens]
 
@@ -119,10 +117,20 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     pauses = [Pause(i, 150 if emo.arousal >= 0 else 300) for i, t in enumerate(tokens) if t.endswith(",")]
     prosody = Prosody(rate=rate, pitch=pitch, volume=volume, emphasis=emphasis, pauses=pauses)
 
+    segments = []
+    for clause, text in zip(clauses, spoken):
+        r, p, v = delivery(clause.valence, clause.arousal, clause.confidence, cfg.expressiveness)
+        words = text.split()
+        clause_pauses = [Pause(i, 150 if clause.arousal >= 0 else 300) for i, t in enumerate(words[:-1]) if t.endswith(",")]
+        clause_emphasis = [w for w in emphasis if w in [t.strip(_PUNCT) for t in words]]
+        segments.append(SpeechSegment(text, clause.label, Prosody(r, p, v, emphasis=clause_emphasis,
+                                                                  pauses=clause_pauses),
+                                      clause.valence, clause.arousal, clause.source))
+
     lively = emo.arousal > 0.5
     eye = EyeColour(rgb=EYE_PALETTE[emo.label], intensity=0.5 + 0.4 * (emo.arousal + 1) / 2,
                     pattern="pulse" if lively else "solid", transition_ms=200 if lively else 400)
 
     return SpeechPlan(frame_id=frame.frame_id, mode="interpret", utterance=utterance,
                       emotion_label=emo.label, voice=Voice(language=lang), prosody=prosody, eye=eye,
-                      lexicon=lexicon_for(utterance))
+                      segments=segments)

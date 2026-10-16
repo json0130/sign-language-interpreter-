@@ -1,16 +1,19 @@
 """SpeechPlan -> WAV file with local prosody. Standard library only (wave, array)."""
 import sys
+import tempfile
 import wave
 from array import array
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from interpreter.contracts import SpeechPlan
 from interpreter.local_tts.config import RenderConfig
-from interpreter.local_tts.piper_engine import engine_for
+from interpreter.local_tts.engines import engine_for
 from interpreter.tts.base import lexicon_spans, pause_map, split_punct, tokens
 
 PITCH_RANGE = (0.8, 1.25)
+GAP_MS = 120          # silence between clauses when a plan with segments is joined into one WAV
 GAIN_RANGE = (0.25, 1.5)
 INT16_MAX = 32767
 
@@ -60,9 +63,70 @@ def respelled_segments(plan: SpeechPlan, style: str) -> List[Tuple[str, int]]:
 
 
 def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig] = None) -> RenderResult:
-    """Synthesise `plan` to a mono 16-bit WAV at `out_path`.
+    """Synthesise `plan` to a mono 16-bit WAV at `out_path`. `engine=None` picks the engine for
+    plan.voice.language (engine_for); an explicit engine wins.
 
-    `engine=None` picks the engine for plan.voice.language (engine_for); an explicit engine wins.
+    A plan with segments (the emotion flow) is rendered one clause at a time, each with its own prosody, and the
+    clauses are joined with GAP_MS of silence (see _render_one for how one clause is rendered). The result's params
+    are the first clause's, plus params["segments"] with every clause's params and duration.
+    """
+    cfg = cfg or RenderConfig()
+    if engine is None:
+        engine = engine_for(plan.voice.language)
+    if not plan.segments:
+        return _render_one(plan, engine, out_path, cfg)
+    with tempfile.TemporaryDirectory() as d:
+        parts = []
+        for k, seg in enumerate(plan.segments):
+            part = replace(plan, utterance=seg.text, emotion_label=seg.emotion_label, prosody=seg.prosody, segments=[])
+            parts.append(_render_one(part, engine, Path(d) / f"{k}.wav", cfg))
+        duration = join_wavs([r.path for r in parts], out_path)
+    params = {**parts[0].params, "segments": [{**r.params, "duration_s": r.duration_s} for r in parts]}
+    notes = tuple(dict.fromkeys(n for r in parts for n in r.notes))
+    with wave.open(str(out_path), "rb") as w:
+        rate = w.getframerate()
+    return RenderResult(str(out_path), duration, rate, params, notes)
+
+
+def resample(samples: array, src: int, dst: int) -> array:
+    """Linear-interpolation resample. Each clause is written at its own rate (that is how pitch is applied), so
+    clauses are brought to one rate before joining; playback sounds the same as the separate files."""
+    if src == dst or not samples:
+        return array("h", samples)
+    n, step, last = round(len(samples) * dst / src), src / dst, len(samples) - 1
+    out = array("h", bytes(2 * n))
+    for i in range(n):
+        x = i * step
+        j = min(int(x), last)
+        nxt = samples[min(j + 1, last)]
+        out[i] = round(samples[j] + (nxt - samples[j]) * (x - j))
+    return out
+
+
+def join_wavs(paths, out_path, gap_ms: int = GAP_MS) -> float:
+    """Concatenate mono 16-bit WAVs (any sample rates) with short silences between them; returns seconds."""
+    loaded = []
+    for p in paths:
+        with wave.open(str(p), "rb") as w:
+            s = array("h")
+            s.frombytes(w.readframes(w.getnframes()))
+            loaded.append((s, w.getframerate()))
+    rate = max(r for _, r in loaded)
+    joined = array("h")
+    for k, (s, r) in enumerate(loaded):
+        if k:
+            joined.extend(array("h", bytes(2 * round(gap_ms / 1000 * rate))))
+        joined.extend(resample(s, r, rate))
+    with wave.open(str(out_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(joined.tobytes())
+    return len(joined) / rate
+
+
+def _render_one(plan: SpeechPlan, engine, out_path, cfg: RenderConfig) -> RenderResult:
+    """One delivery (plan.prosody) for the whole text.
 
     Rate and pitch from one engine and one relabel. With r = prosody.rate and p = prosody.pitch
     (p clamped to 0.8..1.25):
@@ -79,9 +143,6 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
     prosody.volume (clamped 0.25..1.5) and clipped to int16. Emphasis and the plan's eye colour
     are not used here.
     """
-    cfg = cfg or RenderConfig()
-    if engine is None:
-        engine = engine_for(plan.voice.language)
     notes: List[str] = []
     pr = plan.prosody
     rate = pr.rate

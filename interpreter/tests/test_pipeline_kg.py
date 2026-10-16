@@ -83,7 +83,7 @@ class TestListenerWordChoice(unittest.TestCase):
         p = plan_speech(frame(listener="person:aroha"), CTX)
         self.assertEqual(p.utterance, "My whānau is coming to the hui tomorrow.")
         self.assertEqual(p.prosody.emphasis, ["whānau"])
-        self.assertEqual({e.word for e in p.lexicon}, {"whānau", "hui"})
+        self.assertEqual(p.lexicon, [])
 
     def test_te_reo_in_the_transcript_is_glossed_for_an_unknown_listener(self):
         for text in ("My whānau is coming to the hui tomorrow.", "My whanau is coming to the hui tomorrow."):
@@ -149,7 +149,7 @@ class TestNarratedRun(unittest.TestCase):
         for want in ("KNOWLEDGE GRAPH: 15 nodes, 12 edges", "[1/5] INPUT", "[2/5] EMOTION",
                      'text rule matched "Thanks" -> happy', "[3/5] KG", "does NOT know it (no knows_kupu edge",
                      '"whānau" -> "family"', "[4/5] PLAN", "Hello, my family are coming to the meeting tomorrow.",
-                     "x strength", "[5/5] SPEECH", "dry run", "done: 1 speech plan(s), 0 sign plan(s)"):
+                     "emotion flow (2 clauses)", "[5/5] SPEECH", "dry run", "done: 1 speech plan(s), 0 sign plan(s)"):
             self.assertIn(want, out)
 
     def test_knowing_listener_is_explained(self):

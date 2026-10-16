@@ -49,19 +49,19 @@ class TestFrameLanguage(unittest.TestCase):
         d = new_style(); d["text_en"] = "old"
         self.assertNotEqual(InterpretationFrame.from_dict(d).text, "old")
 
-    def test_schema_01_accepted_and_output_is_02(self):
-        self.assertEqual(SUPPORTED_SCHEMAS, ("0.1", "0.2"))
+    def test_old_schemas_accepted_and_output_is_current(self):
+        self.assertEqual(SUPPORTED_SCHEMAS, ("0.1", "0.2", "0.3"))
         d = frame_d1(); d["schema_version"] = "0.1"
         f = InterpretationFrame.from_dict(d)
         self.assertEqual(f.schema_version, SCHEMA_VERSION)
-        self.assertEqual(f.to_dict()["schema_version"], "0.2")
+        self.assertEqual(f.to_dict()["schema_version"], SCHEMA_VERSION)
         for cls, d in ((SpeechPlan, {"frame_id": "a", "mode": "interpret", "utterance": "Hi.",
                                      "emotion_label": "neutral", "schema_version": "0.1"}),
                        (SignPlan, {"frame_id": "a", "meaning": "Hi.", "units": [{"concept": "greeting"}],
                                    "emotion_target": {"label": "neutral", "valence": 0, "arousal": 0},
                                    "schema_version": "0.1"})):
-            self.assertEqual(cls.from_dict(d).schema_version, "0.2")
-        d = frame_d1(); d["schema_version"] = "0.3"
+            self.assertEqual(cls.from_dict(d).schema_version, SCHEMA_VERSION)
+        d = frame_d1(); d["schema_version"] = "0.4"
         with self.assertRaises(ValueError):
             InterpretationFrame.from_dict(d)
 

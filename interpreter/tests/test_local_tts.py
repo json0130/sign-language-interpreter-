@@ -12,7 +12,7 @@ from unittest import mock
 
 from interpreter.contracts import LexiconEntry, Pause, Prosody, SpeechPlan, Voice
 from interpreter.local_tts.config import DEFAULT_VOICE, MODELS_DIR, VOICES, RenderConfig
-from interpreter.local_tts.piper_engine import engine_for
+from interpreter.local_tts.engines import engine_for
 from interpreter.local_tts.render import render_speech
 from interpreter.mocks.mock_recogniser import load_frames
 from interpreter.task1 import plan_speech
@@ -151,11 +151,14 @@ class TestEngineByLanguage(unittest.TestCase):
         m.assert_not_called()
         self.assertEqual(len(eng.calls), 1)
 
-    def test_zh_cn_and_unknown_language(self):
-        with self.assertRaises(NotImplementedError):
-            engine_for("zh-CN")
+    def test_zh_cn_and_unknown_language_or_engine(self):
+        for eng in ("kokoro", "piper"):
+            with self.assertRaises(NotImplementedError):
+                engine_for("zh-CN", eng)
+            with self.assertRaises(ValueError):
+                engine_for("fr", eng)
         with self.assertRaises(ValueError):
-            engine_for("fr")
+            engine_for("en-NZ", "espeak")
 
     def test_registry_has_en_nz_and_en_us(self):
         self.assertEqual(set(VOICES), {"en-NZ", "en-US"})
@@ -183,9 +186,20 @@ class TestRealPiperEnUS(unittest.TestCase):
     def test_renders_en_us_sentence_by_language(self):
         p = replace(plan("Hello there, how are you today?", rate=1.05), voice=Voice(language="en-US"))
         with tempfile.TemporaryDirectory() as d:
-            res = render_speech(p, None, Path(d) / "x.wav")   # engine chosen from plan.voice.language
+            eng = engine_for("en-US", "piper")
+            res = render_speech(p, eng, Path(d) / "x.wav")
             self.assertGreater(res.duration_s, 0)
-            self.assertEqual(res.params["native_sample_rate"], engine_for("en-US").native_sample_rate)
+            self.assertEqual(res.params["native_sample_rate"], eng.native_sample_rate)
+
+
+@unittest.skipUnless(importlib.util.find_spec("kokoro"), "kokoro is not installed (run with interpreter/.venv)")
+class TestRealKokoro(unittest.TestCase):
+    def test_renders_with_prosody_applied(self):
+        eng = engine_for("en-NZ", "kokoro")
+        with tempfile.TemporaryDirectory() as d:
+            res = render_speech(plan("Hello there, nice to meet you.", rate=1.1, pitch=1.05), eng, Path(d) / "x.wav")
+            self.assertGreater(res.duration_s, 0.5)
+            self.assertEqual(res.sample_rate, round(24000 * 1.05))
 
 
 if __name__ == "__main__":

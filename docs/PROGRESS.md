@@ -28,8 +28,9 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | P1 | End-to-end pipeline (`run_pipeline`): emotion backup rules, word choice by listener ("whānau" to "family" unless the listener knows it), Piper TTS. Fixed `text_to_speech` routing. | +22 |
 | T1 | Test sentences in one CSV (`mocks/testset.csv`, 16 rows) and `run_pipeline --testset/--text ... --play` with a summary table; six more common kupu in `concepts.py` (kai, mahi, tamariki, whare, kōrero, koha; needs review). | +18 |
 | F1 | Emotion flow (`emotion_flow.py`), standalone: per-clause emotion from markers, rules or the sentence emotion, inertia, per-speaker carry-over, blended delivery, single-vs-flow A/B rendering. | |
+| T2/F2/V1 | 26 test sentences (pure English or English with KG-replaceable kupu); emotion flow wired into Task 1 and the renderer (schema 0.3: `emotion_flow` spans on the frame, `segments` on the plan); Kokoro as the default local voice (`--tts piper` still available); Māori pronunciation respellings dropped from the speech path. | +9 |
 
-Total: 156 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 165 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 

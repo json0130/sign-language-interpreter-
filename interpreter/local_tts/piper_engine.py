@@ -17,17 +17,3 @@ class PiperEngine:
         chunks = self._voice.synthesize(text, self._cfg(length_scale=length_scale))
         return b"".join(c.audio_int16_bytes for c in chunks)
 
-
-_ENGINES: dict = {}
-
-
-def engine_for(lang: str) -> PiperEngine:
-    """The PiperEngine for `lang`, loaded on first use and then reused."""
-    from interpreter.local_tts.config import MODELS_DIR, VOICES
-    if lang == "zh-CN":
-        raise NotImplementedError("Mandarin voice is not implemented yet")
-    if lang not in VOICES:
-        raise ValueError(f"no voice configured for {lang!r}; have {sorted(VOICES)}")
-    if lang not in _ENGINES:
-        _ENGINES[lang] = PiperEngine(MODELS_DIR / f"{VOICES[lang]}.onnx")
-    return _ENGINES[lang]

@@ -74,7 +74,7 @@ def main(argv=None) -> None:
         dest.mkdir(parents=True, exist_ok=True)
         variants = [(frame.frame_id, plan)]
         if args.flat and args.sweep is None:
-            variants.append((f"{frame.frame_id}-flat", replace(plan, prosody=Prosody())))
+            variants.append((f"{frame.frame_id}-flat", replace(plan, prosody=Prosody(), segments=[])))
         for name, p in variants:
             r = render_speech(plan=p, engine=engine, out_path=dest / f"{name}.wav")
             pa = r.params

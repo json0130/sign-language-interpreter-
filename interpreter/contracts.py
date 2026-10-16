@@ -19,8 +19,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-SCHEMA_VERSION = "0.2"
-SUPPORTED_SCHEMAS = ("0.1", "0.2")   # both are accepted on input; objects always report SCHEMA_VERSION
+SCHEMA_VERSION = "0.3"
+SUPPORTED_SCHEMAS = ("0.1", "0.2", "0.3")   # both are accepted on input; objects always report SCHEMA_VERSION
 
 DIRECTIONS = ("sign_to_speech", "speech_to_sign", "text_to_speech")
 LANGS = ("en-NZ", "en-US", "zh-CN")
@@ -32,6 +32,7 @@ REGISTERS = ("casual", "neutral", "respectful", "formal")
 PERSONAS = ("interpreter", "robot")            # robot = Pepper speaking for itself (clarification only)
 BACKENDS = ("auto", "naoqi", "external")
 SPEECH_MODES = ("interpret", "clarify")
+SEGMENT_SOURCES = ("recogniser", "rule", "utterance")   # where a clause's emotion came from
 EYE_PATTERNS = ("solid", "pulse", "fade")
 # Open for the sign-generation owner to extend; closed here so typos fail loudly.
 NONMANUAL_HINTS = ("brows_up", "brows_down", "head_tilt", "head_nod", "head_shake",
@@ -135,6 +136,22 @@ class Concept(_Base):
         return cls(**d)
 
 
+@dataclass
+class EmotionSpan(_Base):
+    """The recogniser's emotion from word `start_word` (an index into text.split()) until the next span: lets a
+    sentence change emotion part way through (the signer's face changes mid-sentence)."""
+    start_word: int
+    emotion: Emotion
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.start_word, int) or isinstance(self.start_word, bool) or self.start_word < 0:
+            raise ValueError("emotion_flow.start_word must be an int >= 0")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EmotionSpan":
+        return cls(d["start_word"], Emotion.from_dict(d["emotion"]))
+
+
 # ---------------------------------------------------------------- 1. frame
 @dataclass
 class InterpretationFrame(_Base):
@@ -149,6 +166,7 @@ class InterpretationFrame(_Base):
     concepts: list[Concept] = field(default_factory=list)
     gloss: Optional[str] = None       # only for sign_to_speech
     setting: Optional[str] = None     # e.g. "lab_open_day", "marae"
+    emotion_flow: list[EmotionSpan] = field(default_factory=list)   # optional per-span emotions (schema 0.3)
     source_lang: str = "en-NZ"
     target_lang: str = "en-NZ"
     schema_version: str = SCHEMA_VERSION
@@ -169,6 +187,9 @@ class InterpretationFrame(_Base):
         _range("input_confidence", self.input_confidence, 0, 1)
         if self.gloss is not None and self.direction != "sign_to_speech":
             raise ValueError("gloss is only valid when direction='sign_to_speech'")
+        starts = [span.start_word for span in self.emotion_flow]
+        if starts != sorted(set(starts)) or (starts and starts[-1] >= len(self.text.split())):
+            raise ValueError("emotion_flow start_word values must be increasing and inside the text")
         _check_schema(self)
 
     @classmethod
@@ -180,6 +201,7 @@ class InterpretationFrame(_Base):
         d["emotion"] = Emotion.from_dict(d["emotion"])
         d["nuance"] = [NuanceTag.from_dict(x) for x in d.get("nuance", [])]
         d["concepts"] = [Concept.from_dict(x) for x in d.get("concepts", [])]
+        d["emotion_flow"] = [EmotionSpan.from_dict(x) for x in d.get("emotion_flow", [])]
         return cls(**d)
 
 
@@ -277,6 +299,42 @@ class LexiconEntry(_Base):
         return cls(**d)
 
 
+def _check_words(where: str, text: str, prosody: Prosody) -> None:
+    """Emphasis words must be in `text` and pauses must fall inside it."""
+    words = text.split()
+    for w in prosody.emphasis:
+        if w not in words and w.strip(".,!?;:") not in [x.strip(".,!?;:") for x in words]:
+            raise ValueError(f"{where} emphasis word {w!r} not found in its text")
+    for p in prosody.pauses:
+        if p.after_word_index >= len(words):
+            raise ValueError(f"{where} pause index {p.after_word_index} beyond its length {len(words)}")
+
+
+@dataclass
+class SpeechSegment(_Base):
+    """One clause of a SpeechPlan with its own emotion and delivery (the emotion flow, schema 0.3)."""
+    text: str
+    emotion_label: str
+    prosody: Prosody = field(default_factory=Prosody)
+    valence: float = 0.0
+    arousal: float = 0.0
+    source: str = "utterance"
+
+    def __post_init__(self) -> None:
+        _text("segment.text", self.text)
+        _in("segment.emotion_label", self.emotion_label, EMOTIONS)
+        _range("segment.valence", self.valence, -1, 1)
+        _range("segment.arousal", self.arousal, -1, 1)
+        _in("segment.source", self.source, SEGMENT_SOURCES)
+        _check_words("segment", self.text, self.prosody)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SpeechSegment":
+        d = dict(d)
+        d["prosody"] = Prosody.from_dict(d.get("prosody", {}))
+        return cls(**d)
+
+
 @dataclass
 class SpeechPlan(_Base):
     frame_id: str                     # the frame this plan answers
@@ -287,6 +345,7 @@ class SpeechPlan(_Base):
     prosody: Prosody = field(default_factory=Prosody)
     eye: EyeColour = field(default_factory=EyeColour)
     lexicon: list[LexiconEntry] = field(default_factory=list)
+    segments: list[SpeechSegment] = field(default_factory=list)   # optional per-clause delivery (schema 0.3)
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -298,13 +357,9 @@ class SpeechPlan(_Base):
             raise ValueError("clarify mode must use persona='robot' (the interpreter never speaks for itself)")
         if self.mode == "interpret" and self.voice.persona != "interpreter":
             raise ValueError("interpret mode must use persona='interpreter'")
-        words = self.utterance.split()
-        for w in self.prosody.emphasis:
-            if w not in words and w.strip(".,!?;:") not in [x.strip(".,!?;:") for x in words]:
-                raise ValueError(f"prosody.emphasis word {w!r} not found in utterance")
-        for p in self.prosody.pauses:
-            if p.after_word_index >= len(words):
-                raise ValueError(f"pause index {p.after_word_index} beyond utterance length {len(words)}")
+        _check_words("prosody", self.utterance, self.prosody)
+        if self.segments and " ".join(seg.text for seg in self.segments).split() != self.utterance.split():
+            raise ValueError("segments must cover the utterance word for word, in order")
         _check_schema(self)
 
     @classmethod
@@ -314,6 +369,7 @@ class SpeechPlan(_Base):
         d["prosody"] = Prosody.from_dict(d.get("prosody", {}))
         d["eye"] = EyeColour.from_dict(d.get("eye", {}))
         d["lexicon"] = [LexiconEntry.from_dict(x) for x in d.get("lexicon", [])]
+        d["segments"] = [SpeechSegment.from_dict(x) for x in d.get("segments", [])]
         return cls(**d)
 
 

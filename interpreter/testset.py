@@ -3,8 +3,9 @@
 Columns (header row required; only id, text and emotion must be filled):
     id          frame id, e.g. t01
     mix         free label for grouping, e.g. "english" or "english+kupu"
-    text        the transcript. Optional {emotion} markers start a new clause emotion for the flow tool, e.g.
-                "{happy}Kia ora everyone, {sad}but koro could not come." The pipeline strips them.
+    text        the transcript. Optional {emotion} markers say where the signer's emotion changes, e.g.
+                "{happy}Kia ora everyone, {sad}but my nan could not come." They become the frame's emotion_flow
+                (what a recogniser would report as the signer's face changes) and are removed from the text.
     emotion     the recogniser's utterance emotion (one of contracts.EMOTIONS)
     confidence  the recogniser's emotion confidence, 0..1 (default 0.8). Below 0.4 the text rules take over.
     listener    addressee id in the KG (default person:visitor_01, who knows no te reo)
@@ -14,7 +15,6 @@ Columns (header row required; only id, text and emotion must be filled):
     speaker, input_confidence, valence, arousal   optional overrides
 """
 import csv
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -22,18 +22,18 @@ from typing import List
 from interpreter.concepts import CONCEPTS, gloss
 from interpreter.contracts import Concept, Emotion, InterpretationFrame
 from interpreter.emotion import CANONICAL_VA
+from interpreter.emotion_flow import markers_to_spans
 
 DEFAULT_TESTSET = Path(__file__).resolve().parent / "mocks" / "testset.csv"
-MARKER = re.compile(r"\{([a-z]+)\}\s*")
 
 
 def strip_markers(text: str) -> str:
-    return MARKER.sub("", text).strip()
+    return markers_to_spans(text)[0]
 
 
 @dataclass(frozen=True)
 class TestRow:
-    frame: InterpretationFrame     # what the pipeline gets (markers removed)
+    frame: InterpretationFrame     # what the pipeline gets (markers turned into emotion_flow spans)
     marked_text: str               # the text as written, markers included (what the flow tool reads)
     mix: str = ""
     notes: str = ""
@@ -48,9 +48,10 @@ def make_row(row_id: str, text: str, emotion: str = "neutral", confidence: float
         if slug not in CONCEPTS:
             raise ValueError(f"unknown concept {slug!r}; known: {', '.join(CONCEPTS)}")
         tags.append(Concept(slug, gloss(slug, "en-NZ"), CONCEPTS[slug].te_reo))
+    plain, spans = markers_to_spans(text)
     frame = InterpretationFrame(
         frame_id=row_id, direction="sign_to_speech", speaker_id=speaker, addressee_id=listener,
-        text=strip_markers(text), input_confidence=float(input_confidence), concepts=tags,
+        text=plain, input_confidence=float(input_confidence), concepts=tags, emotion_flow=spans,
         emotion=Emotion(emotion, float(v if valence in (None, "") else valence),
                         float(a if arousal in (None, "") else arousal), float(confidence)))
     return TestRow(frame, text, mix, notes)
