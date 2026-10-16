@@ -1,6 +1,6 @@
 # Progress and next steps
 
-Last updated: 2026-10-15. Repo history starts at the scaffold commit; earlier work lived on the `feature/sign-language-project` branch of ChatBox-companion-robot and was moved here with its commits.
+Last updated: 2026-10-16. Repo history starts at the scaffold commit; earlier work lived on the `feature/sign-language-project` branch of ChatBox-companion-robot and was moved here with its commits.
 
 ## What this project is
 
@@ -26,8 +26,10 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | B2 | TTS emotion bake-off (`interpreter/bakeoff/`, report in `REPORT.md`): by ear IndexTTS-2.5 best (too exaggerated at full strength), CosyVoice second, Kokoro/Parler/Chatterbox out. Engine choice and integration parked. | |
 | K1 | Stdlib knowledge graph (`interpreter/kg/`) and `KGContext`: does the listener know this kupu? | +10 |
 | P1 | End-to-end pipeline (`run_pipeline`): emotion backup rules, word choice by listener ("whānau" to "family" unless the listener knows it), Piper TTS. Fixed `text_to_speech` routing. | +22 |
+| T1 | Test sentences in one CSV (`mocks/testset.csv`, 16 rows) and `run_pipeline --testset/--text ... --play` with a summary table; six more common kupu in `concepts.py` (kai, mahi, tamariki, whare, kōrero, koha; needs review). | +18 |
+| F1 | Emotion flow (`emotion_flow.py`), standalone: per-clause emotion from markers, rules or the sentence emotion, inertia, per-speaker carry-over, blended delivery, single-vs-flow A/B rendering. | |
 
-Total: 138 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 156 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 

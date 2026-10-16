@@ -146,7 +146,7 @@ def run_cli(*argv: str) -> str:
 class TestNarratedRun(unittest.TestCase):
     def test_demo_prints_every_stage_with_reasons(self):
         out = run_cli("--demo", "--dry-run")
-        for want in ("KNOWLEDGE GRAPH: 9 nodes, 6 edges", "[1/5] INPUT", "[2/5] EMOTION",
+        for want in ("KNOWLEDGE GRAPH: 15 nodes, 12 edges", "[1/5] INPUT", "[2/5] EMOTION",
                      'text rule matched "Thanks" -> happy', "[3/5] KG", "does NOT know it (no knows_kupu edge",
                      '"whānau" -> "family"', "[4/5] PLAN", "Hello, my family are coming to the meeting tomorrow.",
                      "x strength", "[5/5] SPEECH", "dry run", "done: 1 speech plan(s), 0 sign plan(s)"):

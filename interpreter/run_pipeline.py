@@ -1,8 +1,11 @@
-"""Whole pipeline on the mock frames, narrating every stage:  transcript -> emotion -> KG -> Task 1 plan -> TTS.
+"""Whole pipeline, narrating every stage:  transcript -> emotion -> KG -> Task 1 plan -> TTS.
 
-    interpreter/.venv/bin/python -m interpreter.run_pipeline [--demo] [--only f-011,f-003] [--dry-run] [--quiet]
-                                                             [--kg FILE] [--frames DIR] [--out DIR] [--play]
-                                                             [--target-lang en-NZ|en-US] [--expressiveness 0..2]
+    interpreter/.venv/bin/python -m interpreter.run_pipeline --testset [FILE] --play     # the test sentences, spoken
+    interpreter/.venv/bin/python -m interpreter.run_pipeline --text "..." [--listener ID] [--emotion E]
+                                                             [--confidence C] [--concepts "ck:a ck:b"] --play
+    interpreter/.venv/bin/python -m interpreter.run_pipeline [--demo] [--frames DIR]     # mock frame JSON files
+  common: [--only t01,t05] [--dry-run] [--quiet] [--kg FILE] [--out DIR] [--target-lang en-NZ|en-US]
+          [--expressiveness 0..2] [--play]
 
 Each frame prints numbered stages with the decision made and why, printed from inside the real handlers (so the trace
 shows what actually ran). --demo runs the te reo transcript frame (mocks/frames_kg). --dry-run skips the TTS and runs with
@@ -16,6 +19,7 @@ from interpreter.baseline import baseline_task2
 from interpreter.concepts import CONCEPTS, find_kupu, gloss
 from interpreter.contracts import LANGS
 from interpreter.emotion import CANONICAL_VA, MIN_CONFIDENCE, match_rule, refine_emotion
+from interpreter.contracts import EMOTIONS
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.graph import Graph
 from interpreter.kg.provider import KGContext
@@ -25,6 +29,7 @@ from interpreter.pipeline import Pipeline
 from interpreter.prosody_profiles import PROFILES, strength
 from interpreter.run_local import expressiveness_arg
 from interpreter.task1 import Task1Config, choose_words, plan_speech
+from interpreter.testset import DEFAULT_TESTSET, load_testset, make_row
 
 HERE = Path(__file__).resolve().parent
 INDENT = " " * 15
@@ -160,6 +165,13 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--frames", default=str(HERE / "mocks" / "frames"))
     ap.add_argument("--demo", action="store_true", help="run the te reo transcript frame (mocks/frames_kg)")
+    ap.add_argument("--testset", nargs="?", const=str(DEFAULT_TESTSET), metavar="CSV",
+                    help=f"run the sentences in a test-set CSV (default {DEFAULT_TESTSET.name})")
+    ap.add_argument("--text", help="run one sentence typed on the command line")
+    ap.add_argument("--listener", default="person:visitor_01", help="with --text: the addressee id in the KG")
+    ap.add_argument("--emotion", default="neutral", choices=EMOTIONS, help="with --text: the recogniser's emotion")
+    ap.add_argument("--confidence", type=float, default=0.8, help="with --text: the recogniser's emotion confidence")
+    ap.add_argument("--concepts", default="", help='with --text: tagged concepts, e.g. "ck:whanau ck:hui"')
     ap.add_argument("--only", help="comma-separated frame ids to run, e.g. f-001,f-011")
     ap.add_argument("--kg", help="JSON graph saved by Graph.save (default: the demo graph)")
     ap.add_argument("--out", default=str(HERE / "audio_out" / "pipeline"))
@@ -177,12 +189,24 @@ def main(argv=None) -> None:
         sink = Recorder()
     else:
         from interpreter.local_tts.sink import LocalSpeechSink   # needs the venv (piper), so imported lazily
-        sink = LocalSpeechSink(args.out, play_audio=args.play)
+        sink = LocalSpeechSink(args.out)
+        from interpreter.local_tts.playback import play
     cfg = Task1Config(expressiveness=args.expressiveness)
     sign_sink = StubSignGenerator()
     pipe = build_pipeline(graph, sink, sign_sink, cfg, args.target_lang, trace)
 
-    frames = load_frames(str(HERE / "mocks" / "frames_kg") if args.demo else args.frames)
+    notes = {}
+    if args.text:
+        rows = [make_row("cli", args.text, args.emotion, args.confidence, args.listener, args.concepts)]
+    elif args.testset:
+        rows = load_testset(args.testset)
+    else:
+        rows = None
+    if rows is not None:
+        frames = [r.frame for r in rows]
+        notes = {r.frame.frame_id: r.notes for r in rows if r.notes}
+    else:
+        frames = load_frames(str(HERE / "mocks" / "frames_kg") if args.demo else args.frames)
     if args.only:
         wanted = set(args.only.split(","))
         frames = [f for f in frames if f.frame_id in wanted]
@@ -192,9 +216,12 @@ def main(argv=None) -> None:
     if verbose:
         describe_graph(graph)
     spoken = signed = 0
+    summary = []
     for frame in frames:
         to_speech = frame.direction in ("sign_to_speech", "text_to_speech")
         print(f"\n===== {frame.frame_id}  {frame.direction}  ->  {'Task 1 (speech)' if to_speech else 'Task 2 (sign)'} =====")
+        if frame.frame_id in notes and verbose:
+            print(f"listen for: {notes[frame.frame_id]}")
         plan = pipe.process(frame)
         if to_speech:
             spoken += 1
@@ -205,10 +232,21 @@ def main(argv=None) -> None:
                 trace.stage(5, 5, "SPEECH", f"voice {plan.voice.language}, {r.duration_s:.2f} s of audio, "
                             f"applied rate {r.params['rate']:.2f} pitch {r.params['pitch']:.2f} "
                             f"volume {r.params['volume']:.2f}", *(f"note: {n}" for n in r.notes), f"file: {r.path}")
+                if args.play:
+                    trace.stage(5, 5, "SPEECH", "playing...")
+                    play(r.path)
+            weak = frame.emotion.confidence < MIN_CONFIDENCE
+            source = "text rule" if refine_emotion(frame) is not frame else ("recogniser (weak)" if weak else "recogniser")
+            summary.append((frame.frame_id, frame.addressee_id, f"{plan.emotion_label} ({source})", plan.utterance))
             if not verbose:
                 print(f'  in : "{frame.text}"\n  out: "{plan.utterance}"')
         else:
             signed += 1
+    if summary:
+        print("\nSUMMARY")
+        print(f"  {'id':<7}{'listener':<19}{'emotion (source)':<30}says")
+        for row in summary:
+            print(f"  {row[0]:<7}{row[1]:<19}{row[2]:<30}{row[3]}")
     print(f"\ndone: {spoken} speech plan(s), {signed} sign plan(s)" + ("" if args.dry_run else f"; WAVs in {args.out}"))
 
 

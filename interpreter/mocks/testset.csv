@@ -1,0 +1,17 @@
+id,mix,text,emotion,confidence,listener,concepts,notes
+t01,english,My family is coming to the meeting tomorrow.,excited,0.85,person:visitor_01,ck:whanau ck:hui,Plain English for a listener who knows no te reo; should sound excited
+t02,english,My family is coming to the meeting tomorrow.,excited,0.85,person:aroha,ck:whanau ck:hui,Same sentence for a te reo listener: whānau and hui should be spoken
+t03,english,My family is coming to the meeting tomorrow.,excited,0.85,person:staff_01,ck:whanau ck:hui,Staff 01 knows whānau only: whānau but meeting
+t04,english+kupu,My whānau are coming to the hui tomorrow.,excited,0.85,person:visitor_01,,te reo in the transcript glossed for an unknown listener: family and meeting
+t05,english+kupu,My whānau are coming to the hui tomorrow.,excited,0.85,person:aroha,,te reo kept for a te reo listener; listen to the whānau and hui pronunciation
+t06,english,"I'm sorry, the meeting has been moved to next week.",apologetic,0.75,person:visitor_01,,Apologetic: slower and softer than neutral
+t07,english,"Thanks so much, that was really helpful!",neutral,0.2,person:visitor_01,,Weak recogniser emotion: the text rule should switch it to happy
+t08,english+kupu,"Kia ora, thanks for the kai, it was delicious!",happy,0.8,person:visitor_01,,Glossed: Hello / food
+t09,english+kupu,"Kia ora, thanks for the kai, it was delicious!",happy,0.8,person:aroha,,Kept: kia ora and kai spoken as te reo
+t10,english+kupu,The tamariki are tired after a long day of mahi.,calm,0.7,person:visitor_01,,Glossed: children / work; calm delivery
+t11,english,I asked for an interpreter and nobody came.,angry,0.85,person:visitor_01,,Angry: faster and louder
+t12,english+kupu,"{happy}Kia ora everyone, {excited}my whānau are finally here, {sad}but koro could not come.",happy,0.7,person:visitor_01,,Flow: happy then excited then sad. koro (grandfather) is not in the concept table so it is left as is
+t13,english+kupu,{calm}We had a long kōrero this morning. {anxious}I'm worried we are running late. {apologetic}Sorry everyone.,calm,0.6,person:visitor_01,,Flow: calm then anxious then apologetic; kōrero glossed to conversation
+t14,english,"{surprised}Wow, the results are in, {excited}and we won!",surprised,0.8,person:visitor_01,,Flow: surprised then excited
+t15,english,The results are in.,neutral,0.1,person:visitor_01,,Weak emotion and no rule matches: stays neutral
+t16,english+kupu,"Thank you for the koha, it means a lot to our whānau.",happy,0.75,person:aroha,,te reo listener: koha and whānau kept

@@ -23,6 +23,16 @@ CONCEPTS: Dict[str, ConceptEntry] = {
     "ck:whanau": ConceptEntry("whānau", {"en-NZ": "family", "en-US": "family"}, note=f"zh-CN gloss {_ZH_NOTE}"),
     "ck:hui": ConceptEntry("hui", {"en-NZ": "meeting", "en-US": "meeting"}, note=f"zh-CN gloss {_ZH_NOTE}"),
     "ck:kia-ora": ConceptEntry("kia ora", {"en-NZ": "hello", "en-US": "hello"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    # Common kupu in everyday NZ English, added for the test set. One plain gloss each; the real meanings are wider
+    # (koha is a gift or donation, kōrero is talk, speech or conversation). "aroha" is deliberately absent: it is also
+    # a personal name (person:aroha), so glossing it would turn a name into "love". marae and tangi are left out
+    # because no single English word fits.
+    "ck:kai": ConceptEntry("kai", {"en-NZ": "food", "en-US": "food"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    "ck:mahi": ConceptEntry("mahi", {"en-NZ": "work", "en-US": "work"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    "ck:tamariki": ConceptEntry("tamariki", {"en-NZ": "children", "en-US": "children"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    "ck:whare": ConceptEntry("whare", {"en-NZ": "house", "en-US": "house"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    "ck:korero": ConceptEntry("kōrero", {"en-NZ": "conversation", "en-US": "conversation"}, note=f"zh-CN gloss {_ZH_NOTE}"),
+    "ck:koha": ConceptEntry("koha", {"en-NZ": "gift", "en-US": "gift"}, note=f"zh-CN gloss {_ZH_NOTE}"),
 }
 
 

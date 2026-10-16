@@ -50,6 +50,12 @@ def choose_words(frame: InterpretationFrame, ctx: ContextProvider, lang: str) ->
     return swaps
 
 
+def lexicon_for(utterance: str) -> list:
+    """Pronunciation entries (lexicon.py) for the kupu that appear in `utterance`."""
+    return [LexiconEntry(w, lookup(w), ipa=lookup_ipa(w)) for w in LEXICON
+            if re.search(rf"\b{re.escape(w)}\b", utterance, flags=re.IGNORECASE)]
+
+
 def _swap(text: str, pairs: list) -> str:
     """Whole-word, case-insensitive replace, keeping a leading capital."""
     for old, new in pairs:
@@ -117,8 +123,6 @@ def plan_speech(frame: InterpretationFrame, ctx: ContextProvider,
     eye = EyeColour(rgb=EYE_PALETTE[emo.label], intensity=0.5 + 0.4 * (emo.arousal + 1) / 2,
                     pattern="pulse" if lively else "solid", transition_ms=200 if lively else 400)
 
-    lexicon = [LexiconEntry(w, lookup(w), ipa=lookup_ipa(w)) for w in LEXICON
-               if re.search(rf"\b{re.escape(w)}\b", utterance, flags=re.IGNORECASE)]
-
     return SpeechPlan(frame_id=frame.frame_id, mode="interpret", utterance=utterance,
-                      emotion_label=emo.label, voice=Voice(language=lang), prosody=prosody, eye=eye, lexicon=lexicon)
+                      emotion_label=emo.label, voice=Voice(language=lang), prosody=prosody, eye=eye,
+                      lexicon=lexicon_for(utterance))

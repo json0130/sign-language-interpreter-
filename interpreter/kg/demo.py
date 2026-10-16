@@ -13,8 +13,8 @@ def demo_graph() -> Graph:
         g.ensure("concept", slug, entry.te_reo)
     maori = culture_id("Māori")
     g.ensure("culture", maori, "Māori")
-    for slug, prior in (("ck:whanau", 0.95), ("ck:hui", 0.95), ("ck:kia-ora", 0.95)):
-        g.link(maori, slug, "culture_prior", prior, source="demo-seed")
+    for slug in CONCEPTS:     # one guessed prior for every kupu in the concept table
+        g.link(maori, slug, "culture_prior", 0.95, source="demo-seed")
     # The ids are the ones the mock frames use. Aroha signs; she and Rawiri are tagged Māori. visitor_01 and visitor_02
     # have no tag, so the interpreter glosses for them. staff_01 has been told what whānau means: an explicit
     # per-person edge, independent of any culture tag.

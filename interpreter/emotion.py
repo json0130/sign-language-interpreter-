@@ -24,7 +24,7 @@ RULES = [
     ("anxious", r"\b(worried|nervous|afraid|scared|anxious|running late|missed)\b"),
     ("sad", r"\b(sad|lonely|grief|grieving|heartbroken|miss(ed|ing)? (my|you|him|her|them|home))\b"),
     ("excited", r"\b(excited|can't wait|over the moon|amazing|awesome|yay)\b|!!"),
-    ("happy", r"\b(thanks?|thank you|great|wonderful|glad|happy|pleased|love)\b"),
+    ("happy", r"\b(thanks?|thank you|great|wonderful|glad|happy|pleased|lov(e|ed|es|ing)|enjoy(ed|ing)?)\b"),
     ("surprised", r"\b(wow|no way|unexpected|surprised|can't believe)\b"),
     ("confused", r"\b(confused|don't understand|what do you mean|not sure what)\b"),
     ("apologetic", r"\b(sorry|apologi[sz]e|excuse me|pardon)\b"),

@@ -101,6 +101,30 @@ Other flags: `--kg FILE` (a graph saved with `Graph.save`; default is the demo g
 
 Placeholders: the demo graph's culture priors are guesses, and which kupu a community or person knows needs review by Māori language advisers or speakers.
 
+## Test sentences and emotion flow
+
+**Test sentences** live in one file, `interpreter/mocks/testset.csv` (16 rows: English only, and English with some kupu Māori; different listeners; weak-emotion cases; a few with emotion-flow markers). Edit it in any spreadsheet or text editor. Columns: `id, mix, text, emotion, confidence, listener, concepts, notes` (see `interpreter/testset.py` for details and optional extras). Then:
+
+```
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play              # every sentence: stages, then it is spoken
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only t08,t09 --play
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset my_sentences.csv --play
+interpreter/.venv/bin/python -m interpreter.run_pipeline --text "Kia ora, my whānau loved the kai!" \
+    --listener person:aroha --emotion excited --confidence 0.8 --play                   # one sentence, typed in
+```
+
+Each sentence prints its "listen for" note, the five stages, then plays; a summary table ends the run. Listeners in the demo graph: `person:aroha` and `person:rawiri` (tagged Māori, so te reo is kept), `person:staff_01` (knows whānau only), `person:visitor_01` and `person:visitor_02` (no te reo, so kupu are glossed). Known kupu are in `interpreter/concepts.py`; other te reo words (for example "koro") pass through unchanged.
+
+**Emotion flow** (`interpreter/emotion_flow.py`, standalone, not yet used by the pipeline): one emotion per clause instead of one per sentence. Clauses break at sentence punctuation and before ", but" / ", so" style joins. A clause's emotion comes from an authored `{emotion}` marker in the text, else a text rule blended with the sentence emotion, else the sentence emotion; unmarked clauses keep 30% of the previous one so the voice does not jump, and `--carry` carries each speaker's state from one sentence to the next. Delivery is a smooth blend of the emotion profiles, so in-between emotions get in-between rate, pitch and volume.
+
+```
+python3 -m interpreter.emotion_flow --testset --only t12,t13,t14                       # print the clause-by-clause flow
+interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only t12 --play    # play single-emotion, then flow
+interpreter/.venv/bin/python -m interpreter.emotion_flow --text "{happy}Kia ora, {sad}but koro could not come." --play
+```
+
+The flow tool works on the text as written (no KG word choice). Rendered files go to `interpreter/audio_out/flow/<lang>/` (`<id>-single.wav` and `<id>-flow.wav`; the per-clause parts are in `parts/`). Once it sounds right it will be wired into Task 1 and the speech sink.
+
 ## Pepper test bench
 
 `interpreter/robot/` plays Task 1 output on a real Pepper (NAOqi) and runs a listening test. Needs the optional `qi` bindings for a real robot (`pip install qi`, or the Aldebaran Python 2.7 SDK); `--dry-run` needs nothing.
@@ -130,4 +154,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Steps K1 (stdlib knowledge graph) and P1 (end-to-end pipeline) added; awaiting sign-off. TTS emotion engine parked (IndexTTS-2.5 shortlisted).
+Status: Steps T1 (test sentences) and F1 (standalone emotion flow) added; awaiting listening check. Next: wire the emotion flow into the pipeline once it sounds right.
