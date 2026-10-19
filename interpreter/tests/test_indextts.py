@@ -8,13 +8,16 @@ import wave
 from array import array
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest import mock
 
 from interpreter.contracts import Emotion, InterpretationFrame
 from interpreter.emotion import CANONICAL_VA
 from interpreter.emotion_flow import markers_to_spans
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
-from interpreter.local_tts.indextts_emotion import ALPHAS, SLOTS, VECTORS, describe, emotion_vector
+from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, SLOTS, VECTORS, describe, emotion_vector
+from interpreter.local_tts.indextts_phonemes import PHONEMES, annotate
+from interpreter.concepts import CONCEPTS
 from interpreter.local_tts.indextts_engine import IndexTTSEngine
 from interpreter.local_tts import config
 from interpreter.local_tts.render import render_speech, trim_silence
@@ -108,6 +111,46 @@ class TestDefaultsAndTrim(unittest.TestCase):
         self.assertEqual(trim_silence(array("h", [0] * 50), 10000), array("h", [0] * 50))
 
 
+class TestServerChunking(unittest.TestCase):
+    def test_hints_are_never_split(self):
+        from interpreter.local_tts.indextts_server import chunk_text
+        for text in ("My whānau are coming to the hui tomorrow.", "Thank you for the koha, it means a lot to our whānau.",
+                     "The tamariki are tired after a long day of mahi.", "Kia ora, thanks for the kai, it was delicious!"):
+            for chunk in chunk_text(annotate(text)):
+                self.assertEqual(chunk.count("<"), chunk.count(">"), chunk)
+            self.assertEqual(" ".join(chunk_text(annotate(text))), annotate(text))
+
+    def test_splits_at_punctuation_within_the_budget(self):
+        from interpreter.local_tts.indextts_server import chunk_text
+        self.assertEqual(chunk_text("Short one, short two."), ["Short one, short two."])
+        self.assertEqual(chunk_text("Thank you for the koha, it means a lot to our whānau.", 40),
+                         ["Thank you for the koha,", "it means a lot to our whānau."])
+        long = "a" * 60 + "."
+        self.assertEqual(chunk_text(long), [long])          # no punctuation inside: kept whole, never mid-word
+
+
+class TestKupuHints(unittest.TestCase):
+    def test_every_concept_has_a_hint(self):
+        self.assertEqual(set(PHONEMES), set(CONCEPTS))
+
+    def test_annotate(self):
+        self.assertEqual(annotate("My whānau are at the hui."),
+                         f"My <whānau|{PHONEMES['ck:whanau']}> are at the <hui|{PHONEMES['ck:hui']}>.")
+        self.assertEqual(annotate("Kia ora, WHANAU!"),
+                         f"<Kia ora|{PHONEMES['ck:kia-ora']}>, <WHANAU|{PHONEMES['ck:whanau']}>!")
+        self.assertEqual(annotate("My family are here."), "My family are here.")
+        once = annotate("the hui and the hui")
+        self.assertEqual(once.count("<hui|"), 2)
+        self.assertEqual(annotate(once), once)              # already annotated text is left alone
+
+
+def frame_with(text, listener="person:visitor_01"):
+    text, spans = markers_to_spans(text)
+    return InterpretationFrame(frame_id="x", direction="sign_to_speech", speaker_id="person:aroha",
+                               addressee_id=listener, text=text, input_confidence=0.9,
+                               emotion=Emotion("happy", 0.7, 0.4, 0.8), emotion_flow=spans)
+
+
 class TestEngineAndRender(unittest.TestCase):
     def setUp(self):
         self.fake = FakeIndexTTS()
@@ -134,12 +177,32 @@ class TestEngineAndRender(unittest.TestCase):
                 self.assertEqual(w.getframerate(), 22050)
         self.assertEqual([r["text"] for r in self.fake.requests], ["Hello everyone,", "but my nan could not come."])
         self.assertEqual([(r["emo_vector"], r["emo_alpha"]) for r in self.fake.requests],
-                         [(VECTORS["happy"], ALPHAS["happy"]), (VECTORS["sad"], ALPHAS["sad"])])
+                         [(VECTORS["happy"], round(ALPHAS["happy"] * FLOW_STRENGTH, 3)),
+                          (VECTORS["sad"], round(ALPHAS["sad"] * FLOW_STRENGTH, 3))])   # softened: emotion changes
         seg = res.params["segments"]
         self.assertEqual([(s["rate"], s["pitch"]) for s in seg], [(1.0, 1.0), (1.0, 1.0)])   # no pitch trick
         # each clause's 0.2 s padding is trimmed to 40 ms: 2 words = 0.2 s of sound + 0.08 s
         self.assertAlmostEqual(seg[0]["duration_s"], 0.2 + 0.08, delta=0.01)
-        self.assertIn("IndexTTS emotion sad 0.80, melancholic 0.20 x strength 0.70", clause_line(2, seg[1]))
+        self.assertIn("IndexTTS emotion sad 0.80, melancholic 0.20 x strength 0.56 (softened", clause_line(2, seg[1]))
+
+    def test_single_emotion_sentence_keeps_full_strength(self):
+        plan = plan_speech(frame_with("{sad}I miss them. I really do."), KGContext(demo_graph()))
+        with tempfile.TemporaryDirectory() as d:
+            render_speech(plan, IndexTTSEngine(self.fake.url, autostart=False), Path(d) / "x.wav")
+        self.assertEqual([r["emo_alpha"] for r in self.fake.requests], [ALPHAS["sad"], ALPHAS["sad"]])
+
+    def test_kupu_hints_sent_only_when_te_reo_is_spoken(self):
+        eng = IndexTTSEngine(self.fake.url, autostart=False)
+        ctx = KGContext(demo_graph())
+        with tempfile.TemporaryDirectory() as d:
+            render_speech(plan_speech(frame_with("My whānau are here."), ctx), eng, Path(d) / "a.wav")
+            res = render_speech(plan_speech(frame_with("My whānau are here.", "person:aroha"), ctx), eng, Path(d) / "b.wav")
+            self.assertEqual(self.fake.requests[0]["text"], "My family are here.")          # English listener
+            self.assertEqual(self.fake.requests[1]["text"], f"My <whānau|{PHONEMES['ck:whanau']}> are here.")
+            self.assertIn("sent to IndexTTS: My <whānau|", clause_line(1, {**res.params, "duration_s": 1.0}))
+            with mock.patch.object(config, "INDEXTTS_KUPU_HINTS", False):
+                render_speech(plan_speech(frame_with("My whānau are here.", "person:aroha"), ctx), eng, Path(d) / "c.wav")
+            self.assertEqual(self.fake.requests[2]["text"], "My whānau are here.")
 
     def test_plan_without_segments_uses_its_emotion(self):
         eng = IndexTTSEngine(self.fake.url, autostart=False)

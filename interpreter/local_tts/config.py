@@ -18,6 +18,8 @@ INDEXTTS_REPO = _BAKEOFF / "repos" / "index-tts"
 INDEXTTS_MODEL_DIR = _BAKEOFF / "models" / "indextts-2.5"
 INDEXTTS_HF_HOME = _BAKEOFF / "models" / "hf"
 INDEXTTS_REFERENCE = _BAKEOFF / "reference" / "neutral_ref.wav"   # whose voice is cloned (Kokoro bf_emma, neutral)
+# Send phoneme hints for the kupu IndexTTS speaks (indextts_phonemes.py; drafts to be checked by a te reo speaker).
+INDEXTTS_KUPU_HINTS = True
 # Kokoro voice per language. The first letter is the accent: b = British, a = American. There is no NZ voice, so en-NZ
 # uses the best-graded British voice (bf_emma, B-); af_heart is Kokoro's best overall (A). Swap by ear.
 KOKORO_VOICES = {"en-NZ": "bf_emma", "en-US": "af_heart"}

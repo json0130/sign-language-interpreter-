@@ -78,6 +78,9 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
     if engine is None:
         engine = engine_for(plan.voice.language)
     emotional = getattr(engine, "emotional", False)
+    if emotional:
+        from interpreter.local_tts.indextts_emotion import FLOW_STRENGTH
+        flow_scale = FLOW_STRENGTH if len({s.emotion_label for s in plan.segments}) > 1 else 1.0
     if not plan.segments:
         if emotional:
             v, a = CANONICAL_VA[plan.emotion_label]
@@ -88,7 +91,8 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
         for k, seg in enumerate(plan.segments):
             path = Path(d) / f"{k}.wav"
             if emotional:
-                parts.append(_render_emotional(seg.text, seg.valence, seg.arousal, seg.prosody.volume, engine, path, cfg))
+                parts.append(_render_emotional(seg.text, seg.valence, seg.arousal, seg.prosody.volume, engine, path, cfg,
+                                               flow_scale))
                 continue
             part = replace(plan, utterance=seg.text, emotion_label=seg.emotion_label, prosody=seg.prosody, segments=[])
             parts.append(_render_one(part, engine, path, cfg))
@@ -164,13 +168,18 @@ def trim_silence(samples: array, rate: int, threshold: float = 0.02, pad_ms: int
 
 
 def _render_emotional(text: str, valence: float, arousal: float, volume: float, engine, out_path,
-                      cfg: RenderConfig) -> RenderResult:
-    """One clause on an emotion-capable engine: the clause's emotion becomes the engine's emotion vector and alpha."""
+                      cfg: RenderConfig, alpha_scale: float = 1.0) -> RenderResult:
+    """One clause on an emotion-capable engine: the clause's emotion becomes the engine's emotion vector and alpha
+    (times `alpha_scale`, which softens sentences whose emotion changes). Kupu get phoneme hints if configured."""
+    from interpreter.local_tts.config import INDEXTTS_KUPU_HINTS
     from interpreter.local_tts.indextts_emotion import emotion_vector
+    from interpreter.local_tts.indextts_phonemes import annotate
     notes: List[str] = []
     gain = _clamp(volume, *GAIN_RANGE, "volume", notes)
     vector, alpha = emotion_vector(valence, arousal)
-    pcm, rate = engine.synthesize_emotion(text, vector, alpha)
+    alpha = round(alpha * alpha_scale, 3)
+    sent = annotate(text) if INDEXTTS_KUPU_HINTS else text
+    pcm, rate = engine.synthesize_emotion(sent, vector, alpha)
     samples = array("h")
     samples.frombytes(pcm)
     if sys.byteorder == "big":
@@ -178,6 +187,7 @@ def _render_emotional(text: str, valence: float, arousal: float, volume: float, 
     samples = trim_silence(samples, rate)     # IndexTTS pads each clause; joined clauses had awkward gaps
     _normalise_and_write(samples, rate, gain, out_path, cfg)
     params = {"rate": 1.0, "pitch": 1.0, "volume": gain, "emo_vector": vector, "emo_alpha": alpha,
+              "flow_softened": alpha_scale != 1.0, "sent_text": sent,
               "native_sample_rate": rate, "output_sample_rate": rate}
     return RenderResult(str(out_path), len(samples) / rate, rate, params, tuple(notes))
 

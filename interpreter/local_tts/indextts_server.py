@@ -15,10 +15,43 @@ Standalone on purpose (no interpreter imports), so the file can be copied to ano
 import argparse
 import io
 import json
+import re
 import sys
 import time
 import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+ANNOTATION = re.compile(r"<([^|>\n]+)\|([^>\n]+)>")     # IndexTTS's own <word|phonemes> format
+CHUNK_CHARS = 40                                        # IndexTTS's low-VRAM chunk size
+
+
+def chunk_text(text: str, max_chars: int = CHUNK_CHARS) -> list:
+    """Split at punctuation into pieces of at most `max_chars` spoken characters, never inside a <word|phonemes> hint.
+
+    IndexTTS does this itself on GPUs under 10 GB, but its splitter also cuts at the dots inside a phoneme hint, so the
+    hint is no longer recognised and its stress digits are read out ("F AA one"). This replaces it (the server turns
+    IndexTTS's own splitting off). A hint counts as the length of its word."""
+    saved = []
+
+    def hide(m):
+        saved.append(m.group(0))
+        return f"\x00{len(saved) - 1}\x00"
+
+    def show(s, words=False):
+        return re.sub(r"\x00(\d+)\x00", lambda m: (ANNOTATION.fullmatch(saved[int(m.group(1))]).group(1) if words
+                                                     else saved[int(m.group(1))]), s)
+
+    parts = [p for p in re.split(r"(?<=[,.!?;:])", ANNOTATION.sub(hide, text)) if p]
+    chunks, current = [], ""
+    for part in parts:
+        if current and len(show(current + part, words=True)) > max_chars:
+            chunks.append(current)
+            current = part
+        else:
+            current += part
+    if current:
+        chunks.append(current)
+    return [show(c).strip() for c in chunks if c.strip()]
 
 
 def main() -> None:
@@ -38,11 +71,16 @@ def main() -> None:
     t0 = time.time()
     tts = IndexTTS2(cfg_path=f"{args.model_dir}/config.yaml", model_dir=args.model_dir, use_bf16=True)
 
+    tts.low_vram = False   # chunk_text does its splitting instead (hint-aware, same chunk size)
+
     def synth(text, vector, alpha, lang="EN"):
-        torch.manual_seed(0)
-        sr, wav = tts.infer(spk_audio_prompt=args.reference, text=text, output_path=None, lang=lang,
-                            emo_vector=vector, emo_alpha=alpha, use_random=False)
-        return int(sr), np.asarray(wav).reshape(-1).astype("<i2").tobytes()
+        pieces, sr = [], 22050
+        for chunk in chunk_text(text):
+            torch.manual_seed(0)
+            sr, wav = tts.infer(spk_audio_prompt=args.reference, text=chunk, output_path=None, lang=lang,
+                                emo_vector=vector, emo_alpha=alpha, use_random=False)
+            pieces.append(np.asarray(wav).reshape(-1).astype("<i2"))
+        return int(sr), np.concatenate(pieces).tobytes()
 
     sample_rate, _ = synth("Hello.", [0, 0, 0, 0, 0, 0, 0, 0.8], 0.5)   # warm-up, and learn the sample rate
     print(f"[indextts-server] ready in {time.time() - t0:.0f} s on {args.host}:{args.port}, {sample_rate} Hz", flush=True)

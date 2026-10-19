@@ -151,7 +151,9 @@ interpreter/.venv/bin/python -m interpreter.local_tts.indextts_engine     # Ctrl
 
 It needs about 5.7 GB of GPU memory. The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network. `--tts kokoro` or `--tts piper` switch back; Kokoro uses `bf_emma` (en-NZ) and `af_heart` (en-US), set in `KOKORO_VOICES`.
 
-No Māori pronunciation respellings are applied; kupu are replaced with English for listeners who do not know them, and spoken as written otherwise. IndexTTS's English voice mispronounces the kupu it keeps for te reo listeners (Jay's scoring: e02, k02, f08).
+**Kupu pronunciation (IndexTTS):** kupu are replaced with English for listeners who do not know them. For listeners who do, IndexTTS now gets a phoneme hint for each kupu (`<whānau|F AA1 . N AW0>`, from `interpreter/local_tts/indextts_phonemes.py`), because its English voice mispronounced them (Jay's scoring: e02, k02, f08). The hints are **drafts written without a te reo speaker** and must be checked by ear; the trace shows the exact text sent ("sent to IndexTTS: ..."). Compare with and without: `--only e02,k02,k05,f08 --step` and the same with `--no-kupu-hints`. The service chunks text itself so a hint is never split (IndexTTS's own low-memory splitter cut hints at their dots and read the stress digits aloud).
+
+**Softer flows:** in a sentence whose clauses carry different emotions, every clause's IndexTTS strength is multiplied by 0.8 (`FLOW_STRENGTH` in `indextts_emotion.py`), after Jay found f05 and r05 too exaggerated; single-emotion sentences keep the per-emotion strengths. The trace marks these clauses "softened".
 
 ## Pepper test bench
 
@@ -182,4 +184,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: IndexTTS is the default voice (19/26 sentences passed Jay's scoring). Open: kupu pronunciation for te reo listeners, strength of sad/angry inside flows.
+Status: IndexTTS default; draft kupu phoneme hints and softer flows added; awaiting Jay's listening check of e02, k02, k05, f08, f05, r05.

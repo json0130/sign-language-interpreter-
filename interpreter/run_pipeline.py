@@ -162,8 +162,12 @@ def clause_line(k: int, params: dict) -> str:
     """What the renderer applied to one clause."""
     if "emo_vector" in params:           # IndexTTS: the emotion itself, not our rate/pitch
         from interpreter.local_tts.indextts_emotion import describe as vector_text
-        return (f"clause {k}: IndexTTS emotion {vector_text(params['emo_vector'])} x strength {params['emo_alpha']:.2f}, "
-                f"volume {params['volume']:.2f}, {params['duration_s']:.2f} s")
+        line = (f"clause {k}: IndexTTS emotion {vector_text(params['emo_vector'])} x strength {params['emo_alpha']:.2f}"
+                + (" (softened: the emotion changes in this sentence)" if params.get("flow_softened") else "")
+                + f", volume {params['volume']:.2f}, {params['duration_s']:.2f} s")
+        if "<" in params.get("sent_text", ""):
+            line += f"\n{INDENT}  sent to IndexTTS: {params['sent_text']}"
+        return line
     return (f"clause {k}: rate {params['rate']:.2f} pitch {params['pitch']:.2f} volume {params['volume']:.2f}, "
             f"{params['duration_s']:.2f} s")
 
@@ -333,6 +337,8 @@ def main(argv=None) -> None:
                     help="voice engine: indextts (default; real emotion input; starts its service on first use, about a "
                          "minute), kokoro (emotion only via our rate/pitch/volume) or piper")
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
+    ap.add_argument("--no-kupu-hints", action="store_true",
+                    help="IndexTTS: do not send phoneme hints for kupu Māori (to compare with and without)")
     ap.add_argument("--carry", action="store_true",
                     help="carry each speaker's emotion from one sentence to the next (off: every sentence starts fresh)")
     ap.add_argument("--step", action="store_true",
@@ -347,6 +353,9 @@ def main(argv=None) -> None:
 
     verbose = not args.quiet
     quiet_library_noise()
+    if args.no_kupu_hints:
+        from interpreter.local_tts import config as tts_config
+        tts_config.INDEXTTS_KUPU_HINTS = False
     if args.dry_run:
         def play(_):
             pass

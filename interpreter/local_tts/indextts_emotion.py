@@ -25,6 +25,9 @@ VECTORS = {
     "surprised": [0, 0, 0, 0, 0, 0, 0.8, 0],
     "confused": [0, 0, 0, 0.2, 0, 0.1, 0.4, 0],     # no confused slot: approximate
 }
+# In a sentence whose clauses carry different emotions, every clause's strength is multiplied by this: Jay found
+# sad/angry inside flows too exaggerated (f05, r05 on 2026-10-19). Single-emotion sentences keep the ALPHAS.
+FLOW_STRENGTH = 0.8
 ALPHAS = {"neutral": 0.5, "sad": 0.7, "excited": 0.5, "angry": 0.7,
           "happy": 0.7, "surprised": 0.8, "calm": 0.5, "apologetic": 0.5, "anxious": 0.7, "confused": 0.5}
 
