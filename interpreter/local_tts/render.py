@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from interpreter.contracts import SpeechPlan
+from interpreter.emotion import CANONICAL_VA
 from interpreter.local_tts.config import RenderConfig
 from interpreter.local_tts.engines import engine_for
 from interpreter.tts.base import lexicon_spans, pause_map, split_punct, tokens
@@ -69,17 +70,28 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
     A plan with segments (the emotion flow) is rendered one clause at a time, each with its own prosody, and the
     clauses are joined with GAP_MS of silence (see _render_one for how one clause is rendered). The result's params
     are the first clause's, plus params["segments"] with every clause's params and duration.
+
+    An engine with `emotional = True` (IndexTTS) is given each clause's emotion instead (_render_emotional): it does
+    its own expressive delivery, so our rate/pitch trick is not applied; only the clause volume is.
     """
     cfg = cfg or RenderConfig()
     if engine is None:
         engine = engine_for(plan.voice.language)
+    emotional = getattr(engine, "emotional", False)
     if not plan.segments:
+        if emotional:
+            v, a = CANONICAL_VA[plan.emotion_label]
+            return _render_emotional(plan.utterance, v, a, plan.prosody.volume, engine, out_path, cfg)
         return _render_one(plan, engine, out_path, cfg)
     with tempfile.TemporaryDirectory() as d:
         parts = []
         for k, seg in enumerate(plan.segments):
+            path = Path(d) / f"{k}.wav"
+            if emotional:
+                parts.append(_render_emotional(seg.text, seg.valence, seg.arousal, seg.prosody.volume, engine, path, cfg))
+                continue
             part = replace(plan, utterance=seg.text, emotion_label=seg.emotion_label, prosody=seg.prosody, segments=[])
-            parts.append(_render_one(part, engine, Path(d) / f"{k}.wav", cfg))
+            parts.append(_render_one(part, engine, path, cfg))
         duration = join_wavs([r.path for r in parts], out_path)
     params = {**parts[0].params, "segments": [{**r.params, "duration_s": r.duration_s} for r in parts]}
     notes = tuple(dict.fromkeys(n for r in parts for n in r.notes))
@@ -125,6 +137,39 @@ def join_wavs(paths, out_path, gap_ms: int = GAP_MS) -> float:
     return len(joined) / rate
 
 
+def _normalise_and_write(samples: array, rate: int, gain: float, out_path, cfg: RenderConfig) -> None:
+    """Scale to cfg.base_peak, apply `gain`, clip to int16 and write a mono 16-bit WAV."""
+    peak = max((abs(s) for s in samples), default=0)
+    if peak:
+        k = cfg.base_peak * INT16_MAX / peak * gain
+        samples = array("h", (max(-INT16_MAX, min(INT16_MAX, round(s * k))) for s in samples))
+    if sys.byteorder == "big":   # WAV data is little-endian
+        samples.byteswap()
+    with wave.open(str(out_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(samples.tobytes())
+
+
+def _render_emotional(text: str, valence: float, arousal: float, volume: float, engine, out_path,
+                      cfg: RenderConfig) -> RenderResult:
+    """One clause on an emotion-capable engine: the clause's emotion becomes the engine's emotion vector and alpha."""
+    from interpreter.local_tts.indextts_emotion import emotion_vector
+    notes: List[str] = []
+    gain = _clamp(volume, *GAIN_RANGE, "volume", notes)
+    vector, alpha = emotion_vector(valence, arousal)
+    pcm, rate = engine.synthesize_emotion(text, vector, alpha)
+    samples = array("h")
+    samples.frombytes(pcm)
+    if sys.byteorder == "big":
+        samples.byteswap()
+    _normalise_and_write(samples, rate, gain, out_path, cfg)
+    params = {"rate": 1.0, "pitch": 1.0, "volume": gain, "emo_vector": vector, "emo_alpha": alpha,
+              "native_sample_rate": rate, "output_sample_rate": rate}
+    return RenderResult(str(out_path), len(samples) / rate, rate, params, tuple(notes))
+
+
 def _render_one(plan: SpeechPlan, engine, out_path, cfg: RenderConfig) -> RenderResult:
     """One delivery (plan.prosody) for the whole text.
 
@@ -161,18 +206,7 @@ def _render_one(plan: SpeechPlan, engine, out_path, cfg: RenderConfig) -> Render
         samples.extend(seg)
         samples.extend(array("h", bytes(2 * round(pause_ms / 1000 * out_rate))))
 
-    peak = max((abs(s) for s in samples), default=0)
-    if peak:
-        k = cfg.base_peak * INT16_MAX / peak * gain
-        samples = array("h", (max(-INT16_MAX, min(INT16_MAX, round(s * k))) for s in samples))
-
-    if sys.byteorder == "big":   # WAV data is little-endian
-        samples.byteswap()
-    with wave.open(str(out_path), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(out_rate)
-        w.writeframes(samples.tobytes())
+    _normalise_and_write(samples, out_rate, gain, out_path, cfg)
 
     params = {"rate": rate, "pitch": pitch, "volume": gain, "length_scale": length_scale,
               "native_sample_rate": engine.native_sample_rate, "output_sample_rate": out_rate}

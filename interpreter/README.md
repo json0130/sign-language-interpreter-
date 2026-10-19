@@ -141,6 +141,12 @@ Each sentence prints its "listen for" note and the five stages, then plays. Stag
 interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only f01 --play         # plays single, then flow
 ```
 
+**IndexTTS (real emotion):** `--tts indextts` uses IndexTTS-2.5, the bake-off winner. Each clause's emotion becomes an IndexTTS emotion vector and strength (`interpreter/local_tts/indextts_emotion.py`: neutral 0.5, sad 0.7, excited 0.5, angry 0.7 from Jay's listening; happy 0.7 and surprised 0.8 raised after "happy sounds neutral, surprised not surprised"; the rest untuned), clauses between emotions get a blend, and our rate/pitch trick is not applied. IndexTTS needs its own torch build, so it runs as a small HTTP service (`interpreter/local_tts/indextts_server.py`) in the bake-off's IndexTTS venv; the pipeline starts it on first use (about a minute; log in `interpreter/audio_out/indextts_server.log`) and stops it on exit. It needs about 5.7 GB of GPU memory, so close other GPU-heavy runs first. The voice is cloned from `interpreter/bakeoff/reference/neutral_ref.wav` (Kokoro bf_emma). The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network.
+
+```
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --score --tts indextts
+```
+
 **Voice:** the default local engine is now **Kokoro** (`hexgrad/Kokoro-82M`, Apache-2.0), which sounds more natural than Piper. Kokoro has no emotion input of its own; the planner's rate, pitch and volume are applied on top, clause by clause. en-NZ uses `bf_emma` (the best-graded British voice; there is no NZ voice) and en-US uses `af_heart` (Kokoro's best-graded voice). Change them in `interpreter/local_tts/config.py` (`KOKORO_VOICES`, `TTS_ENGINE`). Kokoro is installed in `interpreter/.venv` and downloads its weights on first use. No Māori pronunciation respellings are applied any more; kupu are replaced with English for listeners who do not know them, and spoken as written otherwise.
 
 ## Pepper test bench

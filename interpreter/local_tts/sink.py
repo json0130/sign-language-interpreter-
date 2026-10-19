@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from interpreter.contracts import SpeechPlan
-from interpreter.local_tts.config import KOKORO_VOICES, TTS_ENGINE, VOICES
+from interpreter.local_tts.config import INDEXTTS_REFERENCE, KOKORO_VOICES, TTS_ENGINE, VOICES
 from interpreter.local_tts.engines import engine_for
 from interpreter.local_tts.playback import play
 from interpreter.local_tts.render import RenderResult, render_speech
@@ -32,4 +32,6 @@ class LocalSpeechSink:
         """e.g. 'kokoro bf_emma' (for the trace)."""
         if self.engine is not None:
             return f"{type(self.engine).__name__} {getattr(self.engine, 'voice', '')}".strip()
+        if self.tts == "indextts":
+            return f"indextts (voice cloned from {Path(INDEXTTS_REFERENCE).name})"
         return f"{self.tts} {(KOKORO_VOICES if self.tts == 'kokoro' else VOICES)[lang]}"

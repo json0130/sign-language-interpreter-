@@ -7,12 +7,17 @@ _ENGINES: dict = {}
 
 
 def engine_for(lang: str, engine: Optional[str] = None):
-    """The engine for `lang`: `engine` ("kokoro" or "piper"), else config.TTS_ENGINE."""
+    """The engine for `lang`: `engine` ("kokoro", "indextts" or "piper"), else config.TTS_ENGINE."""
     name = engine or TTS_ENGINE
     if name not in TTS_ENGINES:
         raise ValueError(f"engine {name!r} not in {TTS_ENGINES}")
     if lang == "zh-CN":
         raise NotImplementedError("Mandarin voice is not implemented yet")
+    if name == "indextts":            # one service for every supported language; the voice comes from its reference
+        if "indextts" not in _ENGINES:
+            from interpreter.local_tts.indextts_engine import IndexTTSEngine
+            _ENGINES["indextts"] = IndexTTSEngine()
+        return _ENGINES["indextts"]
     voices = KOKORO_VOICES if name == "kokoro" else VOICES
     if lang not in voices:
         raise ValueError(f"no {name} voice configured for {lang!r}; have {sorted(voices)}")

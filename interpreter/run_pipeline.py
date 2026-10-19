@@ -158,6 +158,16 @@ class Recorder:
         self.received.append(plan)
 
 
+def clause_line(k: int, params: dict) -> str:
+    """What the renderer applied to one clause."""
+    if "emo_vector" in params:           # IndexTTS: the emotion itself, not our rate/pitch
+        from interpreter.local_tts.indextts_emotion import describe as vector_text
+        return (f"clause {k}: IndexTTS emotion {vector_text(params['emo_vector'])} x strength {params['emo_alpha']:.2f}, "
+                f"volume {params['volume']:.2f}, {params['duration_s']:.2f} s")
+    return (f"clause {k}: rate {params['rate']:.2f} pitch {params['pitch']:.2f} volume {params['volume']:.2f}, "
+            f"{params['duration_s']:.2f} s")
+
+
 def emotion_source(frame) -> str:
     if refine_emotion(frame) is not frame:
         return "text rule"
@@ -282,6 +292,19 @@ class Scorer:
         print(f"  saved to {self.path}")
 
 
+def quiet_library_noise() -> None:
+    """Hide torch/kokoro/Hugging Face warnings that say nothing about this pipeline (they cluttered the trace)."""
+    import logging
+    import os
+    import warnings
+    os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    for category in (UserWarning, FutureWarning, DeprecationWarning):
+        warnings.filterwarnings("ignore", category=category, module=r"(torch|kokoro|huggingface_hub|transformers).*")
+    for name in ("huggingface_hub", "kokoro", "phonemizer"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def build_pipeline(graph: Graph, speech_sink, sign_sink, cfg: Task1Config, target_lang=None,
                    trace: Tracer = Tracer(False), state: Optional[SpeakerState] = None) -> Pipeline:
     """state: a SpeakerState to carry each speaker's emotion from one sentence to the next (None = off)."""
@@ -306,7 +329,9 @@ def main(argv=None) -> None:
     ap.add_argument("--target-lang", choices=[l for l in LANGS if l != "zh-CN"])
     ap.add_argument("--expressiveness", type=expressiveness_arg, default=Task1Config.expressiveness)
     ap.add_argument("--play", action="store_true", help="play each WAV after rendering")
-    ap.add_argument("--tts", choices=("kokoro", "piper"), help="local voice engine (default: config.TTS_ENGINE, kokoro)")
+    ap.add_argument("--tts", choices=("kokoro", "indextts", "piper"),
+                    help="voice engine: kokoro (default; emotion via our rate/pitch/volume), indextts (real emotion "
+                         "input; starts its service on first use, about a minute) or piper")
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
     ap.add_argument("--carry", action="store_true",
                     help="carry each speaker's emotion from one sentence to the next (off: every sentence starts fresh)")
@@ -321,6 +346,7 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     verbose = not args.quiet
+    quiet_library_noise()
     if args.dry_run:
         def play(_):
             pass
@@ -379,8 +405,7 @@ def main(argv=None) -> None:
                 parts = r.params.get("segments") or [{**r.params, "duration_s": r.duration_s}]
                 trace.stage(5, 5, "SPEECH", f"{sink.voice_name(plan.voice.language)} ({plan.voice.language}), "
                             f"{r.duration_s:.2f} s of audio",
-                            *(f"clause {k}: rate {x['rate']:.2f} pitch {x['pitch']:.2f} volume {x['volume']:.2f}, "
-                              f"{x['duration_s']:.2f} s" for k, x in enumerate(parts, start=1)),
+                            *(clause_line(k, x) for k, x in enumerate(parts, start=1)),
                             *(f"note: {n}" for n in r.notes), f"file: {r.path}")
             if not verbose:
                 print(f'  in : "{frame.text}"\n  out: "{plan.utterance}"')

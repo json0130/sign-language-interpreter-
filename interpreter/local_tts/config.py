@@ -3,9 +3,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-# Which local engine speaks: "kokoro" (more natural; the default) or "piper" (the original, a deep male voice).
+# Which engine speaks: "kokoro" (natural voice, emotion only through our rate/pitch/volume; the default), "indextts"
+# (real emotion input, the bake-off winner; runs as a separate service, see below) or "piper" (the original deep voice).
 TTS_ENGINE = "kokoro"
-TTS_ENGINES = ("kokoro", "piper")
+TTS_ENGINES = ("kokoro", "indextts", "piper")
+# IndexTTS-2.5 runs in its own venv (it needs its own torch build) as a small HTTP service (indextts_server.py). With the
+# default local URL the engine starts it automatically; point INDEXTTS_URL at another machine to use a remote one. The
+# venv, weights and git checkout are the ones set up for the bake-off (interpreter/bakeoff/setup.sh).
+_BAKEOFF = Path(__file__).resolve().parent.parent / "bakeoff"
+INDEXTTS_URL = "http://127.0.0.1:8765"
+INDEXTTS_PYTHON = _BAKEOFF / "venvs" / "indextts" / "bin" / "python"
+INDEXTTS_REPO = _BAKEOFF / "repos" / "index-tts"
+INDEXTTS_MODEL_DIR = _BAKEOFF / "models" / "indextts-2.5"
+INDEXTTS_HF_HOME = _BAKEOFF / "models" / "hf"
+INDEXTTS_REFERENCE = _BAKEOFF / "reference" / "neutral_ref.wav"   # whose voice is cloned (Kokoro bf_emma, neutral)
 # Kokoro voice per language. The first letter is the accent: b = British, a = American. There is no NZ voice, so en-NZ
 # uses the best-graded British voice (bf_emma, B-); af_heart is Kokoro's best overall (A). Swap by ear.
 KOKORO_VOICES = {"en-NZ": "bf_emma", "en-US": "af_heart"}

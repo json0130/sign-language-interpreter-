@@ -4,7 +4,7 @@ it also runs on its own for A/B listening (the same sentence with one emotion, t
     python3 -m interpreter.emotion_flow --testset [CSV] [--only t12,t13]          # print the flow per sentence
     python3 -m interpreter.emotion_flow --text "{happy}Kia ora, {sad}but my nan could not come." [--emotion E]
     interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only t12 --play   # play single, then flow
-      [--render] [--carry] [--tts kokoro|piper] [--expressiveness 0..2] [--target-lang en-NZ|en-US] [--out DIR]
+      [--render] [--carry] [--tts kokoro|indextts|piper] [--expressiveness 0..2] [--target-lang en-NZ|en-US] [--out DIR]
 
 How a clause gets its emotion, in order:
   1. the recogniser's emotion span covering it (frame.emotion_flow; in the test CSV, {emotion} markers), used as given;
@@ -168,7 +168,7 @@ def main(argv=None) -> None:
     ap.add_argument("--carry", action="store_true", help="carry each speaker's state from one sentence to the next")
     ap.add_argument("--render", action="store_true", help="write <id>-single.wav and <id>-flow.wav (needs the venv)")
     ap.add_argument("--play", action="store_true", help="render, then play single then flow for each sentence")
-    ap.add_argument("--tts", choices=("kokoro", "piper"), help="local engine (default: config.TTS_ENGINE)")
+    ap.add_argument("--tts", choices=("kokoro", "indextts", "piper"), help="engine (default: config.TTS_ENGINE)")
     ap.add_argument("--expressiveness", type=float, default=1.0)
     ap.add_argument("--target-lang", default="en-NZ", choices=[l for l in LANGS if l != "zh-CN"])
     ap.add_argument("--out", default=str(HERE / "audio_out" / "flow"))
