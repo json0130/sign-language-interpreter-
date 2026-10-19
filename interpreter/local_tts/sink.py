@@ -32,6 +32,9 @@ class LocalSpeechSink:
         """e.g. 'kokoro bf_emma' (for the trace)."""
         if self.engine is not None:
             return f"{type(self.engine).__name__} {getattr(self.engine, 'voice', '')}".strip()
+        if self.tts == "aiserver":
+            eng = engine_for(lang, "aiserver")
+            return f"AI server {eng.address} ({eng.server_engine or 'unknown engine'})"
         if self.tts == "indextts":
             return f"indextts (voice cloned from {Path(INDEXTTS_REFERENCE).name})"
         return f"{self.tts} {(KOKORO_VOICES if self.tts == 'kokoro' else VOICES)[lang]}"

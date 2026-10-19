@@ -178,7 +178,7 @@ def _render_emotional(text: str, valence: float, arousal: float, volume: float, 
     gain = _clamp(volume, *GAIN_RANGE, "volume", notes)
     vector, alpha = emotion_vector(valence, arousal)
     alpha = round(alpha * alpha_scale, 3)
-    sent = annotate(text) if INDEXTTS_KUPU_HINTS else text
+    sent = annotate(text) if INDEXTTS_KUPU_HINTS and getattr(engine, "accepts_phoneme_hints", True) else text
     pcm, rate = engine.synthesize_emotion(sent, vector, alpha)
     samples = array("h")
     samples.frombytes(pcm)

@@ -47,17 +47,20 @@ HF_HOME="$DEST/hf" "$DEST/venv/bin/hf" download IndexTeam/IndexTTS-2.5 --local-d
 step "start.sh"
 cat > "$DEST/start.sh" <<EOF
 #!/usr/bin/env bash
-# Starts the IndexTTS service on 127.0.0.1:\${INDEXTTS_PORT:-8790} (no authentication, so reach it through an SSH tunnel).
+# Starts the IndexTTS service: HTTP on 127.0.0.1:\${INDEXTTS_PORT:-8790} and the AI server's orchestrator protocol on
+# \${INDEXTTS_AI_PORT:-7899} (no authentication, so reach them through an SSH tunnel, or set INDEXTTS_HOST=0.0.0.0 on a
+# trusted network behind a firewall).
 cd "$DEST/index-tts"
 export HF_HOME="$DEST/hf" PYTHONPATH="$DEST/index-tts"
 exec "$DEST/venv/bin/python" "$DEST/indextts_server.py" --repo "$DEST/index-tts" --model-dir "$DEST/models" \\
-     --reference "$DEST/neutral_ref.wav" --host 127.0.0.1 --port "\${INDEXTTS_PORT:-8790}"
+     --reference "$DEST/neutral_ref.wav" --host "\${INDEXTTS_HOST:-127.0.0.1}" --port "\${INDEXTTS_PORT:-8790}" \\
+     --ai-port "\${INDEXTTS_AI_PORT:-7899}"
 EOF
 chmod +x "$DEST/start.sh"
 
 step "done"
 echo "Start the service:  bash $DEST/start.sh        (loading takes about a minute; it prints 'ready')"
 echo "Keep it running:    tmux new -s indextts 'bash $DEST/start.sh'"
-echo "Test on this machine:  curl http://127.0.0.1:8790/health"
+echo "Test on this machine:  curl http://127.0.0.1:8790/health      (the AI server protocol is on port 7899)"
 echo "Everything is under $DEST ($(du -sh "$DEST" 2>/dev/null | cut -f1)); remove that folder to uninstall."
 echo "From your development machine:  ssh -N -L 8790:127.0.0.1:8790 USER@SERVER   then   curl http://127.0.0.1:8790/health"

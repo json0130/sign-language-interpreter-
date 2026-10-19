@@ -36,8 +36,9 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | I4 | Kupu hints rebuilt from published pronunciations (Wiktionary Māori IPA, Victoria University of Wellington guide): short a is AH, long ā is AA (the first draft used AA everywhere, which is why whare sounded wrong). Audition tool `python -m interpreter.local_tts.indextts_phonemes <kupu>` / `--changed` plays numbered candidates. | +3 |
 | E1 | Grammar-vs-emotion guard: in a plain question, face readings that eyebrow grammar can produce (surprised for yes/no; angry, confused for wh) are set aside as neutral; words can still add emotion. Five question test sentences (g01–g05). Kupu pronunciation parked (needs a te reo voice, e.g. Te Hiku Media's). | +9 |
 | R1 | IndexTTS on the AI server: read-only preflight (`local_tts/server_check.sh`), installer pinned to the tested commit (`server_install.sh`), `--indextts-url` / `INDEXTTS_URL` to use a running service through an SSH tunnel (never starts a local copy); readable out-of-memory message (Ollama was holding 4.6 GB of the 8 GB card). Not yet run on the server. | +6 |
+| R2 | Speech requests go to the AI server over the Library repo's orchestrator protocol (`interpreter/ai_server/`, default engine `--tts aiserver`; `AI_HOST` / `AI_PORT`); a probe checks the server really is IndexTTS before emotion settings and kupu hints are trusted; our IndexTTS service answers the protocol on port 7899 (tested with the Library repo's own unmodified `tts.py` client). Local engines stay as `--tts indextts / kokoro / piper`. Awaiting the install on the server. | +12 |
 
-Total: 206 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 224 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 

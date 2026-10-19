@@ -9,17 +9,32 @@ or on another machine (the AI server):
     GET  /health      -> {"ok": true, "sample_rate": 22050, "reference": "..."}
     POST /synthesize  {"text": str, "emo_vector": [8 floats], "emo_alpha": float, "lang": "EN"} -> audio/wav
 
-The speaker voice is cloned from --reference. No authentication: keep --host on 127.0.0.1 unless the network is trusted.
+It also answers the AI server's orchestrator protocol (the one in the Library-Book-Robot repo: TCP, length header echoed,
+JSON body) on --ai-port (default 7899; 0 turns it off), so the pipeline can request speech the same way the robot does:
+    {"robot_id", "request_id", "command": ["TTS"], "parameters": {"emo_vector": [8 floats], "emo_alpha": 0..1,
+     "lang": "EN"}, "content": text}  ->  {..., "command": [], "parameters": {"format": "wav", "sample_rate", "channels":
+     1, "dtype": "int16", "engine": "indextts"}, "content": <base64 WAV>}      (or "command": ["ERR"] and a message)
+Both ports share one loaded model; requests are spoken one at a time. The server team's orchestrator can use this as its
+TTS backend by forwarding the same request to --ai-port.
+
+The speaker voice is cloned from --reference. No authentication: keep the hosts on 127.0.0.1 unless the network is trusted.
 Standalone on purpose (no interpreter imports), so the file can be copied to another machine.
 """
 import argparse
+import base64
 import io
 import json
 import re
+import socketserver
 import sys
+import threading
 import time
 import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+ORCH_MAX_BYTES = 8 * 1024 * 1024
+ORCH_MAX_TEXT = 2000
+DEFAULT_VECTOR, DEFAULT_ALPHA = [0, 0, 0, 0, 0, 0, 0, 0.8], 0.5     # IndexTTS's own neutral is "calm"
 
 ANNOTATION = re.compile(r"<([^|>\n]+)\|([^>\n]+)>")     # IndexTTS's own <word|phonemes> format
 CHUNK_CHARS = 40                                        # IndexTTS's low-VRAM chunk size
@@ -54,6 +69,87 @@ def chunk_text(text: str, max_chars: int = CHUNK_CHARS) -> list:
     return [show(c).strip() for c in chunks if c.strip()]
 
 
+def wav_bytes(sample_rate: int, pcm: bytes) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------- the orchestrator protocol
+def recv_exact(sock, size: int) -> bytes:
+    chunks = bytearray()
+    while len(chunks) < size:
+        chunk = sock.recv(min(size - len(chunks), 65536))
+        if not chunk:
+            raise EOFError("peer disconnected before the message was complete")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
+def recv_message(sock) -> dict:
+    header = sock.recv(32)
+    if not header:
+        raise EOFError("peer closed the connection")
+    if not header.isdigit() or not 0 < int(header) <= ORCH_MAX_BYTES:
+        raise ValueError("invalid message length")
+    sock.sendall(header)                                    # echo the length back
+    return json.loads(recv_exact(sock, int(header)).decode("utf-8"))
+
+
+def send_message(sock, message: dict) -> None:
+    payload = json.dumps(message, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    header = str(len(payload)).encode("ascii")
+    sock.sendall(header)
+    if recv_exact(sock, len(header)) != header:
+        raise ValueError("peer did not echo the message length")
+    sock.sendall(payload)
+
+
+def orchestrator_reply(request: dict, synth) -> dict:
+    """The reply to one orchestrator request. `synth(text, vector, alpha, lang) -> (sample_rate, pcm bytes)`."""
+    reply = {"robot_id": request.get("robot_id"), "request_id": request.get("request_id")}
+    try:
+        if request.get("command") != ["TTS"]:
+            raise ValueError(f"unsupported command {request.get('command')}; this service only does TTS")
+        text, params = request.get("content"), request.get("parameters") or {}
+        if not isinstance(text, str) or not 0 < len(text) <= ORCH_MAX_TEXT:
+            raise ValueError(f"TTS content must be text of 1 to {ORCH_MAX_TEXT} characters")
+        vector = [float(x) for x in params.get("emo_vector", DEFAULT_VECTOR)]
+        alpha = float(params.get("emo_alpha", DEFAULT_ALPHA))
+        if len(vector) != 8 or not all(0 <= x <= 1 for x in vector) or not 0 <= alpha <= 1:
+            raise ValueError("emo_vector needs 8 values and emo_alpha one value, all between 0 and 1")
+        sample_rate, pcm = synth(text, vector, alpha, str(params.get("lang", "EN")))
+        return {**reply, "command": [], "content": base64.b64encode(wav_bytes(sample_rate, pcm)).decode("ascii"),
+                "parameters": {"format": "wav", "sample_rate": sample_rate, "channels": 1, "dtype": "int16",
+                               "engine": "indextts", "emo_alpha": alpha}}
+    except Exception as e:   # noqa: BLE001  tell the client what went wrong instead of dropping the connection
+        return {**reply, "command": ["ERR"], "parameters": {}, "content": f"{type(e).__name__}: {e}"}
+
+
+def serve_orchestrator(host: str, port: int, synth) -> socketserver.ThreadingTCPServer:
+    """Answer orchestrator requests on host:port in a background thread; returns the server (call .shutdown() to stop)."""
+
+    class Handler(socketserver.BaseRequestHandler):
+        def handle(self):
+            try:
+                while True:                                     # normally one request per connection
+                    send_message(self.request, orchestrator_reply(recv_message(self.request), synth))
+            except (EOFError, ConnectionError, ValueError, OSError):
+                pass
+
+    class Server(socketserver.ThreadingTCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    server = Server((host, port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", required=True, help="the index-tts git checkout")
@@ -61,6 +157,8 @@ def main() -> None:
     ap.add_argument("--reference", required=True, help="WAV whose voice is cloned")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8790)
+    ap.add_argument("--ai-host", help="address for the orchestrator-protocol port (default: --host)")
+    ap.add_argument("--ai-port", type=int, default=7899, help="orchestrator-protocol port; 0 turns it off")
     args = ap.parse_args()
 
     sys.path.insert(0, args.repo)
@@ -82,8 +180,18 @@ def main() -> None:
             pieces.append(np.asarray(wav).reshape(-1).astype("<i2"))
         return int(sr), np.concatenate(pieces).tobytes()
 
-    sample_rate, _ = synth("Hello.", [0, 0, 0, 0, 0, 0, 0, 0.8], 0.5)   # warm-up, and learn the sample rate
-    print(f"[indextts-server] ready in {time.time() - t0:.0f} s on {args.host}:{args.port}, {sample_rate} Hz", flush=True)
+    gpu_lock = threading.Lock()                       # the model speaks one request at a time
+
+    def locked_synth(text, vector, alpha, lang="EN"):
+        with gpu_lock:
+            return synth(text, vector, alpha, lang)
+
+    sample_rate, _ = locked_synth("Hello.", DEFAULT_VECTOR, DEFAULT_ALPHA)   # warm-up, and learn the sample rate
+    if args.ai_port:
+        serve_orchestrator(args.ai_host or args.host, args.ai_port, locked_synth)
+    print(f"[indextts-server] ready in {time.time() - t0:.0f} s: HTTP on {args.host}:{args.port}"
+          + (f", orchestrator protocol on {args.ai_host or args.host}:{args.ai_port}" if args.ai_port else "")
+          + f", {sample_rate} Hz", flush=True)
 
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code, body, ctype):
@@ -108,16 +216,10 @@ def main() -> None:
                 vector = [float(x) for x in req["emo_vector"]]
                 if len(vector) != 8:
                     raise ValueError("emo_vector needs 8 values")
-                sr, pcm = synth(str(req["text"]), vector, float(req["emo_alpha"]), req.get("lang", "EN"))
+                sr, pcm = locked_synth(str(req["text"]), vector, float(req["emo_alpha"]), req.get("lang", "EN"))
             except Exception as e:   # noqa: BLE001  report the error to the client instead of dying
                 return self._send(400, f"{type(e).__name__}: {e}".encode(), "text/plain")
-            buf = io.BytesIO()
-            with wave.open(buf, "wb") as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(sr)
-                w.writeframes(pcm)
-            self._send(200, buf.getvalue(), "audio/wav")
+            self._send(200, wav_bytes(sr, pcm), "audio/wav")
 
         def log_message(self, fmt, *a):
             print(f"[indextts-server] {fmt % a}", flush=True)

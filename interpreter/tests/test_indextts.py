@@ -163,9 +163,9 @@ class TestStartFailure(unittest.TestCase):
 
 
 class TestDefaultsAndTrim(unittest.TestCase):
-    def test_indextts_is_the_default_on_a_port_clear_of_the_chatbox_viewer(self):
-        self.assertEqual(config.TTS_ENGINE, "indextts")
+    def test_local_indextts_service_uses_a_port_clear_of_the_chatbox_viewer(self):
         self.assertNotIn(":8765", config.INDEXTTS_URL)
+        self.assertIn("indextts", config.TTS_ENGINES)               # still available with --tts indextts
 
     def test_trim_silence(self):
         sound = array("h", [0] * 1000 + [5000, -5000] * 500 + [0] * 1000)

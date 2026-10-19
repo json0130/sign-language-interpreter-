@@ -153,6 +153,16 @@ interpreter/.venv/bin/python -m interpreter.local_tts.indextts_engine     # Ctrl
 
 It needs about 5.7 GB of GPU memory. The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network. `--tts kokoro` or `--tts piper` switch back; Kokoro uses `bf_emma` (en-NZ) and `af_heart` (en-US), set in `KOKORO_VOICES`.
 
+**Speech requests to the AI server (the default engine, `--tts aiserver`).** The pipeline no longer loads a voice model by default: each clause is sent to the AI server over the same orchestrator protocol the Library-Book-Robot repo uses (TCP, default port 7898, length header echoed, JSON body; see `vendor/ai_server/README.md` there). The address comes from the same variables:
+
+```
+export AI_HOST=<server-ip>            # and AI_PORT if it is not 7898
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play                       # uses AI_HOST / AI_PORT
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play --ai-host <ip> --ai-port 7899
+```
+
+One request per clause: `command ["TTS"]`, `content` = the text (at most 2000 characters), and in `parameters` the clause's emotion: `engine "indextts"`, `emo_vector` (8 weights: happy, angry, sad, afraid, disgusted, melancholic, surprised, calm), `emo_alpha` (0 to 1), `lang "EN"`, plus `voice` for servers whose TTS has voices. The reply is the usual base64 WAV with `format`, `sample_rate`, `channels`, `dtype`, and `engine`, the name of what actually spoke. On connecting, a short test request checks that: a server that does not answer `engine "indextts"` gets a warning, because it would ignore the emotion settings and speak in its default voice, and kupu pronunciation hints are switched off for it (they would be read aloud). Our IndexTTS service answers this protocol itself on `--ai-port` (default 7899), so it can be the AI server's TTS backend directly or be forwarded to by the server team's orchestrator. If the server cannot be reached, the pipeline says so and suggests `--tts indextts` / `--tts kokoro` for a voice on this machine.
+
 **IndexTTS on the AI server.** IndexTTS needs about 5.7 GB of GPU memory, which does not fit beside an Ollama model on the 8 GB development card. To run it on the AI server instead:
 
 ```
@@ -217,4 +227,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: IndexTTS can run on the AI server (preflight check, installer and tunnel instructions added; not yet tried on the server).
+Status: speech is requested from the AI server over the orchestrator protocol (default engine); awaiting the IndexTTS install on the server to test it live.

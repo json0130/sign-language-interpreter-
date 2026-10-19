@@ -17,6 +17,7 @@ recogniser span starts. Emotion is held as valence/arousal; delivery (rate, pitc
 the emotion profiles, so in-between emotions get in-between delivery. Starting values to tune by ear.
 """
 import argparse
+import sys
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -165,13 +166,19 @@ def main(argv=None) -> None:
     ap.add_argument("--carry", action="store_true", help="carry each speaker's state from one sentence to the next")
     ap.add_argument("--render", action="store_true", help="write <id>-single.wav and <id>-flow.wav (needs the venv)")
     ap.add_argument("--play", action="store_true", help="render, then play single then flow for each sentence")
-    ap.add_argument("--tts", choices=("kokoro", "indextts", "piper"), help="engine (default: config.TTS_ENGINE)")
+    ap.add_argument("--tts", choices=("aiserver", "indextts", "kokoro", "piper"), help="engine (default: config.TTS_ENGINE)")
+    ap.add_argument("--ai-host", help="AI server address for --tts aiserver (default: the AI_HOST variable)")
+    ap.add_argument("--ai-port", type=int, help="AI server port (default: AI_PORT, else 7898)")
     ap.add_argument("--expressiveness", type=float, default=1.0)
     ap.add_argument("--target-lang", default="en-NZ", choices=[l for l in LANGS if l != "zh-CN"])
     ap.add_argument("--out", default=str(HERE / "audio_out" / "flow"))
     args = ap.parse_args(argv)
     if not (args.text or args.testset):
         ap.error("give --text or --testset")
+    if args.ai_host or args.ai_port:
+        from interpreter.local_tts import config as tts_config
+        tts_config.AI_SERVER_HOST = args.ai_host or tts_config.AI_SERVER_HOST
+        tts_config.AI_SERVER_PORT = args.ai_port or tts_config.AI_SERVER_PORT
 
     rows = [make_row("cli", args.text, args.emotion, args.confidence)] if args.text else load_testset(args.testset)
     if args.only:
@@ -209,4 +216,7 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as e:      # the speech engines raise RuntimeError with a message that says what to do
+        sys.exit(f"error: {e}")

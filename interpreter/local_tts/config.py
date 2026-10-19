@@ -4,11 +4,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-# Which engine speaks: "indextts" (real emotion input; the default since Jay's scoring on 2026-10-19: 19/26 sentences
-# passed and it "sounded way better than kokoro"; runs as a separate service, see below), "kokoro" (natural voice,
-# emotion only through our rate/pitch/volume) or "piper" (the original deep voice).
-TTS_ENGINE = "indextts"
-TTS_ENGINES = ("kokoro", "indextts", "piper")
+# Which engine speaks: "aiserver" (the default: IndexTTS on the AI server, requested over the orchestrator protocol),
+# "indextts" (the same IndexTTS as a service on this machine, see below), "kokoro" (natural voice, emotion only through
+# our rate/pitch/volume) or "piper" (the original deep voice). IndexTTS is the one with real emotion input: Jay's scoring
+# on 2026-10-19 gave it 19/26 sentences and "sounded way better than kokoro".
+TTS_ENGINE = "aiserver"
+TTS_ENGINES = ("aiserver", "indextts", "kokoro", "piper")
+# "aiserver" sends each clause to the AI server's orchestrator (TCP, the protocol of the Library-Book-Robot repo; see
+# interpreter/ai_server/), where IndexTTS runs. The address comes from AI_HOST and AI_PORT as in that repo.
+AI_SERVER_HOST = os.environ.get("AI_HOST", "")
+AI_SERVER_PORT = int(os.environ.get("AI_PORT", "7898"))
+AI_SERVER_TIMEOUT = 300       # seconds; a long clause on a busy server can be slow
+AI_SERVER_VOICE = "af_heart"  # for servers whose TTS has voices; IndexTTS clones its reference voice instead
 # IndexTTS-2.5 runs in its own venv (it needs its own torch build) as a small HTTP service (indextts_server.py). With the
 # default local URL the engine starts it automatically; point INDEXTTS_URL at another machine to use a remote one. The
 # venv, weights and git checkout are the ones set up for the bake-off (interpreter/bakeoff/setup.sh).

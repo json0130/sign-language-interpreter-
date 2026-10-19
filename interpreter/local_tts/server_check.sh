@@ -12,6 +12,7 @@
 
 DIR="${1:-${INDEXTTS_DIR:-$HOME}}"
 PORT="${INDEXTTS_PORT:-8790}"
+AI_PORT="${INDEXTTS_AI_PORT:-7899}"
 NEED_FREE_MIB=6500        # free GPU memory to run comfortably (peak use was 5.7 GB = about 5800 MiB)
 MIN_FREE_MIB=6000
 NEED_DISK_GB=25           # 8.3 GB environment + 11 GB weights + headroom
@@ -73,9 +74,11 @@ ram_gb=$(awk '/MemAvailable/ {printf "%d", $2/1048576}' /proc/meminfo 2>/dev/nul
 if [ -z "$ram_gb" ]; then warn "cannot read available RAM"
 elif [ "$ram_gb" -ge "$NEED_RAM_GB" ]; then pass "RAM: ${ram_gb} GB available"
 else warn "RAM: ${ram_gb} GB available (loading the model wants about ${NEED_RAM_GB} GB)"; fi
-if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${PORT}$"; then
-  warn "port $PORT is already in use here (use another with INDEXTTS_PORT=NNNN, and set the same port in the pipeline's URL)"
-else pass "port $PORT is free"; fi
+for p in "$PORT" "$AI_PORT"; do
+  if have ss && ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}$"; then
+    warn "port $p is already in use here (choose another with INDEXTTS_PORT / INDEXTTS_AI_PORT=NNNN when starting)"
+  else pass "port $p is free"; fi
+done
 
 echo; echo "Tools"
 if have python3; then pass "python3 $(python3 --version 2>&1 | awk '{print $2}') (the install brings its own Python 3.11 via uv)"; else warn "python3 not found (only needed for uv's installer fallback)"; fi

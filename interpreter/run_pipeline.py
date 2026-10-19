@@ -13,6 +13,7 @@ plain python3. Without --kg the demo graph (interpreter/kg/demo.py) is used. Spe
 only through rate, pitch and volume; a better emotion TTS is still to be chosen.
 """
 import argparse
+import sys
 import csv
 from datetime import datetime
 from pathlib import Path
@@ -338,9 +339,13 @@ def main(argv=None) -> None:
     ap.add_argument("--target-lang", choices=[l for l in LANGS if l != "zh-CN"])
     ap.add_argument("--expressiveness", type=expressiveness_arg, default=Task1Config.expressiveness)
     ap.add_argument("--play", action="store_true", help="play each WAV after rendering")
-    ap.add_argument("--tts", choices=("kokoro", "indextts", "piper"),
-                    help="voice engine: indextts (default; real emotion input; starts its service on first use, about a "
-                         "minute), kokoro (emotion only via our rate/pitch/volume) or piper")
+    ap.add_argument("--tts", choices=("aiserver", "indextts", "kokoro", "piper"),
+                    help="voice engine: aiserver (default: IndexTTS on the AI server, address from AI_HOST / AI_PORT or "
+                         "--ai-host / --ai-port), indextts (IndexTTS as a service on this machine; starts on first use, "
+                         "about a minute), kokoro (emotion only via our rate/pitch/volume) or piper")
+    ap.add_argument("--ai-host", metavar="HOST", help="AI server address for --tts aiserver (default: the AI_HOST variable)")
+    ap.add_argument("--ai-port", type=int, metavar="PORT",
+                    help="AI server port (default: AI_PORT, else 7898; our IndexTTS service listens on 7899)")
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
     ap.add_argument("--indextts-url", metavar="URL",
                     help="use an IndexTTS service that is already running (for example http://127.0.0.1:8790 through an "
@@ -361,6 +366,10 @@ def main(argv=None) -> None:
 
     verbose = not args.quiet
     quiet_library_noise()
+    if args.ai_host or args.ai_port:
+        from interpreter.local_tts import config as tts_config
+        tts_config.AI_SERVER_HOST = args.ai_host or tts_config.AI_SERVER_HOST
+        tts_config.AI_SERVER_PORT = args.ai_port or tts_config.AI_SERVER_PORT
     if args.indextts_url:
         from interpreter.local_tts import config as tts_config
         tts_config.INDEXTTS_URL, tts_config.INDEXTTS_AUTOSTART = args.indextts_url, False
@@ -462,4 +471,7 @@ def main(argv=None) -> None:
           + ("" if args.dry_run else f"; WAVs in {args.out}"))
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as e:      # the speech engines raise RuntimeError with a message that says what to do
+        sys.exit(f"error: {e}")
