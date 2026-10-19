@@ -27,7 +27,7 @@ PHONEMES: Dict[str, str] = {
     "ck:kia-ora": "K IY1 . AH0 . AO1 . R AH0",         # /ˈkia ˈora/ [ˈkiɐ ˈɔɾɐ]
     "ck:kai": "K AY1",                                 # /ˈkai/ [ˈkɐi]
     "ck:mahi": "M AH1 . HH IY0",                       # no Wiktionary IPA; spelling rules: /ˈmahi/
-    "ck:tamariki": "T AH1 . M AH0 . R IY0 . K IY0",    # /ˈtamariki/ [ˈtɐmɐɾiki]
+    "ck:tamariki": "T AH1 . M AH0 . D IY0 . K IY0",    # /ˈtamariki/ [ˈtɐmɐɾiki]; D for the tapped r: Jay's pick
     "ck:whare": "F AH1 . R EH0",                       # /ˈɸare/ [ˈfɐɾɛ]
     "ck:korero": "K AO1 . R EH0 . R AO0",              # /ˈkoːrero/ [ˈkoːɾɛɾɔ]
     "ck:koha": "K AO1 . HH AH0",                       # no Wiktionary IPA; spelling rules: /ˈkoha/
@@ -38,12 +38,14 @@ PHONEMES: Dict[str, str] = {
 # (AH). The old drafts stay here for comparison, plus D as a stand-in for the tapped r.
 CANDIDATES: Dict[str, List[str]] = {
     "ck:whare": ["F AA1 . R EH0", "F AH1 . D EH0"],
-    "ck:tamariki": ["T AA1 . M AA0 . R IY0 . K IY0", "T AH1 . M AH0 . D IY0 . K IY0"],
+    "ck:tamariki": ["T AA1 . M AA0 . R IY0 . K IY0", "T AH1 . M AH0 . R IY0 . K IY0"],
     "ck:kia-ora": ["K IY1 . AA0 . AO1 . R AA0", "K IY1 . AH0 . AO1 . D AH0"],
     "ck:mahi": ["M AA1 . HH IY0"],
     "ck:koha": ["K AO1 . HH AA0"],
 }
 CHANGED = ("whare", "tamariki", "kia ora", "mahi", "koha")   # the hints that changed from the first draft
+# Jay's audition (2026-10-19): tamariki = the D version (now current); whare and kia ora sounded wrong in every version,
+# including no hint; mahi and koha unclear. IndexTTS cannot say these well; a te reo voice is needed (see README).
 SENTENCE = "The next word is {kupu}."
 
 

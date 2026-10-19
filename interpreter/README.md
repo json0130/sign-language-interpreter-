@@ -153,6 +153,8 @@ It needs about 5.7 GB of GPU memory. The same server can run on another machine 
 
 **Kupu pronunciation (IndexTTS):** kupu are replaced with English for listeners who do not know them. For listeners who do, IndexTTS now gets a phoneme hint for each kupu (`<whānau|F AA1 . N AW0>`, from `interpreter/local_tts/indextts_phonemes.py`), because its English voice mispronounced them (Jay's scoring: e02, k02, f08). The hints are built from published pronunciations (Wiktionary's Māori IPA and the Victoria University of Wellington te reo guide; the first draft wrongly used the long "car" vowel for every short *a*), but English phonemes only approximate te reo, so they must be checked by ear; audition the candidates for a kupu with `interpreter/.venv/bin/python -m interpreter.local_tts.indextts_phonemes whare` (or `--changed` for every hint that changed); the trace shows the exact text sent ("sent to IndexTTS: ..."). Compare with and without: `--only e02,k02,k05,f08 --step` and the same with `--no-kupu-hints`. The service chunks text itself so a hint is never split (IndexTTS's own low-memory splitter cut hints at their dots and read the stress digits aloud).
 
+*Status of the hints (Jay's audition, 2026-10-19):* tamariki works with D for the tapped r; whare and kia ora sounded wrong in every version (including no hint); mahi and koha unclear. IndexTTS's English voice cannot say these well, so kupu pronunciation is **parked**. The proper fix is a te reo Māori voice, such as Te Hiku Media's te reo TTS (Papa Reo); access goes through Te Hiku Media under their data-sovereignty terms, which need checking with them or advisers.
+
 **Softer flows:** in a sentence whose clauses carry different emotions, every clause's IndexTTS strength is multiplied by 0.8 (`FLOW_STRENGTH` in `indextts_emotion.py`), after Jay found f05 and r05 too exaggerated; single-emotion sentences keep the per-emotion strengths. The trace marks these clauses "softened".
 
 ## Pepper test bench
@@ -184,4 +186,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: kupu phoneme hints rebuilt from published pronunciations; awaiting Jay's audition of whare, tamariki, kia ora, mahi and koha.
+Status: kupu pronunciation parked (needs a te reo voice); next focus: Māori sign to English emotion, and the interpreter's actions.
