@@ -3,22 +3,30 @@
 # 20 GB and some minutes of downloading (11 GB of weights). Everything goes into one folder (default ~/indextts-server);
 # nothing is installed system-wide except uv (into ~/.local/bin) if it is missing.
 #
-#   git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli
-#   bash ~/sli/interpreter/local_tts/server_check.sh
-#   bash ~/sli/interpreter/local_tts/server_install.sh [install-folder]
-#   bash ~/indextts-server/start.sh
+# It needs two project files next to it (or in ./assets, or in the current folder): indextts_server.py and neutral_ref.wav.
+# From a clone of the repo they are found automatically; without the repo, put them in the same folder as this script.
+# If neutral_ref.wav is missing it is downloaded from the public repo; if that fails you are told what to copy.
+#
+#   bash server_install.sh [install-folder]        then        bash ~/indextts-server/start.sh
 set -euo pipefail
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"            # the repo's interpreter/local_tts folder
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 DEST="${1:-$HOME/indextts-server}"
 COMMIT=d9e41aac89fd00b3d71497fddb287b7f24613712                # the index-tts commit the pipeline was developed against
-for f in indextts_server.py assets/neutral_ref.wav; do
-  [ -f "$SRC/$f" ] || { echo "missing $SRC/$f: run this from a clone of the sign-language-interpreter- repo"; exit 1; }
-done
+RAW=https://raw.githubusercontent.com/json0130/sign-language-interpreter-/feature/sign-language-project/interpreter/local_tts
+find_file() { for d in "$SRC" "$SRC/assets" "$PWD"; do [ -f "$d/$1" ] && { echo "$d/$1"; return 0; }; done; return 1; }
+mkdir -p "$DEST"
+SERVER_PY="$(find_file indextts_server.py)" || { echo "missing indextts_server.py: put it next to this script (it is in the repo at interpreter/local_tts/)"; exit 1; }
+if ! REF="$(find_file neutral_ref.wav)"; then
+  echo "neutral_ref.wav not found next to the script; trying to download it"
+  curl -fsSL -o "$DEST/neutral_ref.wav.part" "$RAW/assets/neutral_ref.wav" && mv "$DEST/neutral_ref.wav.part" "$DEST/neutral_ref.wav" \
+    || { rm -f "$DEST/neutral_ref.wav.part"; echo "could not download it. Copy this 160 KB file from the development machine to $DEST/neutral_ref.wav (interpreter/local_tts/assets/neutral_ref.wav) and run this script again."; exit 1; }
+  REF="$DEST/neutral_ref.wav"
+fi
 
 step() { printf '\n== %s\n' "$*"; }
 export PATH="$HOME/.local/bin:$PATH"
-mkdir -p "$DEST"
-cp "$SRC/indextts_server.py" "$SRC/assets/neutral_ref.wav" "$DEST/"
+[ "$SERVER_PY" -ef "$DEST/indextts_server.py" ] || cp "$SERVER_PY" "$DEST/indextts_server.py"
+[ "$REF" -ef "$DEST/neutral_ref.wav" ] || cp "$REF" "$DEST/neutral_ref.wav"
 
 step "uv"
 if command -v uv >/dev/null 2>&1; then uv --version; else curl -LsSf https://astral.sh/uv/install.sh | sh; fi

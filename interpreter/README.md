@@ -172,6 +172,14 @@ curl http://127.0.0.1:8790/health                           # the same reply, no
 interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only e01,e03,f01 --score --indextts-url http://127.0.0.1:8790
 ```
 
+**If the server cannot reach this repo**, generate two plain-text files and paste their contents into a terminal on the server (the installer still needs github.com, huggingface.co and pypi.org, which the check reports on):
+
+```
+python3 -m interpreter.local_tts.make_paste        # writes interpreter/audio_out/server_paste/1_check.txt and 2_install.txt
+```
+
+`1_check.txt` writes the read-only check to `~/server_check.sh` and runs it; `2_install.txt` writes `indextts_server.py` and the installer into `~/indextts-server` and runs the installer. The one non-text file, the 160 KB voice clip, is downloaded by the installer; if that is blocked it tells you to copy `interpreter/local_tts/assets/neutral_ref.wav` to `~/indextts-server/` and run `bash server_install.sh` again.
+
 `INDEXTTS_URL=http://127.0.0.1:8790` in the environment does the same as `--indextts-url` for every command (including `emotion_flow`). If the tunnel is down the pipeline says so instead of starting a local copy. The same files work for any machine with an NVIDIA GPU of 6 GB free or more and a driver of 570 or newer.
 
 **Kupu pronunciation (IndexTTS):** kupu are replaced with English for listeners who do not know them. For listeners who do, IndexTTS now gets a phoneme hint for each kupu (`<whānau|F AA1 . N AW0>`, from `interpreter/local_tts/indextts_phonemes.py`), because its English voice mispronounced them (Jay's scoring: e02, k02, f08). The hints are built from published pronunciations (Wiktionary's Māori IPA and the Victoria University of Wellington te reo guide; the first draft wrongly used the long "car" vowel for every short *a*), but English phonemes only approximate te reo, so they must be checked by ear; audition the candidates for a kupu with `interpreter/.venv/bin/python -m interpreter.local_tts.indextts_phonemes whare` (or `--changed` for every hint that changed); the trace shows the exact text sent ("sent to IndexTTS: ..."). Compare with and without: `--only e02,k02,k05,f08 --step` and the same with `--no-kupu-hints`. The service chunks text itself so a hint is never split (IndexTTS's own low-memory splitter cut hints at their dots and read the stress digits aloud).
