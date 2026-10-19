@@ -330,8 +330,8 @@ def main(argv=None) -> None:
     ap.add_argument("--expressiveness", type=expressiveness_arg, default=Task1Config.expressiveness)
     ap.add_argument("--play", action="store_true", help="play each WAV after rendering")
     ap.add_argument("--tts", choices=("kokoro", "indextts", "piper"),
-                    help="voice engine: kokoro (default; emotion via our rate/pitch/volume), indextts (real emotion "
-                         "input; starts its service on first use, about a minute) or piper")
+                    help="voice engine: indextts (default; real emotion input; starts its service on first use, about a "
+                         "minute), kokoro (emotion only via our rate/pitch/volume) or piper")
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
     ap.add_argument("--carry", action="store_true",
                     help="carry each speaker's emotion from one sentence to the next (off: every sentence starts fresh)")

@@ -4,7 +4,7 @@ or on another machine (the AI server):
 
     interpreter/bakeoff/venvs/indextts/bin/python interpreter/local_tts/indextts_server.py \\
         --repo interpreter/bakeoff/repos/index-tts --model-dir interpreter/bakeoff/models/indextts-2.5 \\
-        --reference interpreter/bakeoff/reference/neutral_ref.wav [--host 127.0.0.1] [--port 8765]
+        --reference interpreter/bakeoff/reference/neutral_ref.wav [--host 127.0.0.1] [--port 8790]
 
     GET  /health      -> {"ok": true, "sample_rate": 22050, "reference": "..."}
     POST /synthesize  {"text": str, "emo_vector": [8 floats], "emo_alpha": float, "lang": "EN"} -> audio/wav
@@ -27,7 +27,7 @@ def main() -> None:
     ap.add_argument("--model-dir", required=True, help="IndexTTS-2.5 weights (with config.yaml)")
     ap.add_argument("--reference", required=True, help="WAV whose voice is cloned")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--port", type=int, default=8790)
     args = ap.parse_args()
 
     sys.path.insert(0, args.repo)

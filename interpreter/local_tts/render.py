@@ -152,6 +152,17 @@ def _normalise_and_write(samples: array, rate: int, gain: float, out_path, cfg: 
         w.writeframes(samples.tobytes())
 
 
+def trim_silence(samples: array, rate: int, threshold: float = 0.02, pad_ms: int = 40) -> array:
+    """Drop leading and trailing near-silence (below `threshold` x peak), keeping `pad_ms` either side."""
+    peak = max((abs(x) for x in samples), default=0)
+    if not peak:
+        return samples
+    limit = peak * threshold
+    loud = [i for i, x in enumerate(samples) if abs(x) > limit]
+    pad = round(rate * pad_ms / 1000)
+    return samples[max(0, loud[0] - pad):min(len(samples), loud[-1] + pad + 1)]
+
+
 def _render_emotional(text: str, valence: float, arousal: float, volume: float, engine, out_path,
                       cfg: RenderConfig) -> RenderResult:
     """One clause on an emotion-capable engine: the clause's emotion becomes the engine's emotion vector and alpha."""
@@ -164,6 +175,7 @@ def _render_emotional(text: str, valence: float, arousal: float, volume: float, 
     samples.frombytes(pcm)
     if sys.byteorder == "big":
         samples.byteswap()
+    samples = trim_silence(samples, rate)     # IndexTTS pads each clause; joined clauses had awkward gaps
     _normalise_and_write(samples, rate, gain, out_path, cfg)
     params = {"rate": 1.0, "pitch": 1.0, "volume": gain, "emo_vector": vector, "emo_alpha": alpha,
               "native_sample_rate": rate, "output_sample_rate": rate}

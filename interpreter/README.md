@@ -141,13 +141,17 @@ Each sentence prints its "listen for" note and the five stages, then plays. Stag
 interpreter/.venv/bin/python -m interpreter.emotion_flow --testset --only f01 --play         # plays single, then flow
 ```
 
-**IndexTTS (real emotion):** `--tts indextts` uses IndexTTS-2.5, the bake-off winner. Each clause's emotion becomes an IndexTTS emotion vector and strength (`interpreter/local_tts/indextts_emotion.py`: neutral 0.5, sad 0.7, excited 0.5, angry 0.7 from Jay's listening; happy 0.7 and surprised 0.8 raised after "happy sounds neutral, surprised not surprised"; the rest untuned), clauses between emotions get a blend, and our rate/pitch trick is not applied. IndexTTS needs its own torch build, so it runs as a small HTTP service (`interpreter/local_tts/indextts_server.py`) in the bake-off's IndexTTS venv; the pipeline starts it on first use (about a minute; log in `interpreter/audio_out/indextts_server.log`) and stops it on exit. It needs about 5.7 GB of GPU memory, so close other GPU-heavy runs first. The voice is cloned from `interpreter/bakeoff/reference/neutral_ref.wav` (Kokoro bf_emma). The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network.
+**Voice: IndexTTS is the default** (since Jay's scoring on 2026-10-19: 19/26 sentences passed every check, against Kokoro failing on emotion). It is IndexTTS-2.5, the bake-off winner, and it takes the emotion itself: each clause's emotion becomes an IndexTTS emotion vector and strength (`interpreter/local_tts/indextts_emotion.py`: neutral 0.5, sad 0.7, excited 0.5, angry 0.7 from Jay's listening; happy 0.7 and surprised 0.8 raised after "happy sounds neutral, surprised not surprised"; the rest untuned), clauses between emotions get a blend, and our rate/pitch trick is not applied. Each clause's leading and trailing silence is trimmed before the clauses are joined. The voice is cloned from `interpreter/bakeoff/reference/neutral_ref.wav` (Kokoro bf_emma).
+
+IndexTTS needs its own torch build, so it runs as a small HTTP service (`interpreter/local_tts/indextts_server.py`) in the bake-off's IndexTTS venv, on port 8790 (8765 is the ChatBox graph viewer's). The pipeline starts it on first use (about a minute; log in `interpreter/audio_out/indextts_server.log`) and stops it on exit. To skip the wait on every run, keep it running in a second terminal:
 
 ```
-interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --score --tts indextts
+interpreter/.venv/bin/python -m interpreter.local_tts.indextts_engine     # Ctrl-C to stop
 ```
 
-**Voice:** the default local engine is now **Kokoro** (`hexgrad/Kokoro-82M`, Apache-2.0), which sounds more natural than Piper. Kokoro has no emotion input of its own; the planner's rate, pitch and volume are applied on top, clause by clause. en-NZ uses `bf_emma` (the best-graded British voice; there is no NZ voice) and en-US uses `af_heart` (Kokoro's best-graded voice). Change them in `interpreter/local_tts/config.py` (`KOKORO_VOICES`, `TTS_ENGINE`). Kokoro is installed in `interpreter/.venv` and downloads its weights on first use. No Māori pronunciation respellings are applied any more; kupu are replaced with English for listeners who do not know them, and spoken as written otherwise.
+It needs about 5.7 GB of GPU memory. The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network. `--tts kokoro` or `--tts piper` switch back; Kokoro uses `bf_emma` (en-NZ) and `af_heart` (en-US), set in `KOKORO_VOICES`.
+
+No Māori pronunciation respellings are applied; kupu are replaced with English for listeners who do not know them, and spoken as written otherwise. IndexTTS's English voice mispronounces the kupu it keeps for te reo listeners (Jay's scoring: e02, k02, f08).
 
 ## Pepper test bench
 
@@ -178,4 +182,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: Steps T2 (26 test sentences), F2 (emotion flow in the pipeline, schema 0.3) and V1 (Kokoro voice) added; awaiting listening check.
+Status: IndexTTS is the default voice (19/26 sentences passed Jay's scoring). Open: kupu pronunciation for te reo listeners, strength of sad/angry inside flows.

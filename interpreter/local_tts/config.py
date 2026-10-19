@@ -3,15 +3,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-# Which engine speaks: "kokoro" (natural voice, emotion only through our rate/pitch/volume; the default), "indextts"
-# (real emotion input, the bake-off winner; runs as a separate service, see below) or "piper" (the original deep voice).
-TTS_ENGINE = "kokoro"
+# Which engine speaks: "indextts" (real emotion input; the default since Jay's scoring on 2026-10-19: 19/26 sentences
+# passed and it "sounded way better than kokoro"; runs as a separate service, see below), "kokoro" (natural voice,
+# emotion only through our rate/pitch/volume) or "piper" (the original deep voice).
+TTS_ENGINE = "indextts"
 TTS_ENGINES = ("kokoro", "indextts", "piper")
 # IndexTTS-2.5 runs in its own venv (it needs its own torch build) as a small HTTP service (indextts_server.py). With the
 # default local URL the engine starts it automatically; point INDEXTTS_URL at another machine to use a remote one. The
 # venv, weights and git checkout are the ones set up for the bake-off (interpreter/bakeoff/setup.sh).
 _BAKEOFF = Path(__file__).resolve().parent.parent / "bakeoff"
-INDEXTTS_URL = "http://127.0.0.1:8765"
+INDEXTTS_URL = "http://127.0.0.1:8790"   # not 8765: the ChatBox graph viewer uses that port
 INDEXTTS_PYTHON = _BAKEOFF / "venvs" / "indextts" / "bin" / "python"
 INDEXTTS_REPO = _BAKEOFF / "repos" / "index-tts"
 INDEXTTS_MODEL_DIR = _BAKEOFF / "models" / "indextts-2.5"

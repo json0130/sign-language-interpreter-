@@ -51,8 +51,8 @@ class IndexTTSEngine:
     def _start(self, timeout: float) -> dict:
         if not config.INDEXTTS_PYTHON.exists():
             raise RuntimeError(f"IndexTTS venv not found at {config.INDEXTTS_PYTHON}; set it up with "
-                               "interpreter/bakeoff/setup.sh (the IndexTTS section)")
-        port = str(urlparse(self.url).port or 8765)
+                               "interpreter/bakeoff/setup.sh (the IndexTTS section), or use --tts kokoro")
+        port = str(urlparse(self.url).port or 8790)
         cmd = [str(config.INDEXTTS_PYTHON), str(SERVER), "--repo", str(config.INDEXTTS_REPO),
                "--model-dir", str(config.INDEXTTS_MODEL_DIR), "--reference", str(config.INDEXTTS_REFERENCE),
                "--port", port]
@@ -66,7 +66,8 @@ class IndexTTSEngine:
         while time.time() < deadline:
             if self._proc.poll() is not None:
                 tail = LOG.read_text(errors="replace").strip().splitlines()[-5:]
-                raise RuntimeError("IndexTTS service exited while starting:\n  " + "\n  ".join(tail))
+                raise RuntimeError("IndexTTS service exited while starting (or use --tts kokoro):\n  "
+                                   + "\n  ".join(tail))
             info = self._health()
             if info is not None:
                 print(" ready", flush=True)
@@ -101,3 +102,23 @@ class IndexTTSEngine:
     def synthesize(self, text: str, length_scale: float) -> bytes:
         """Neutral speech, for callers that only know the plain engine interface (length_scale is ignored)."""
         return self.synthesize_emotion(text, *NEUTRAL)[0]
+
+
+def serve_forever() -> None:
+    """Start the service (if it is not already running) and keep it up until Ctrl-C, so pipeline runs reuse it
+    instead of loading IndexTTS each time:  interpreter/.venv/bin/python -m interpreter.local_tts.indextts_engine"""
+    eng = IndexTTSEngine()
+    if eng._proc is None:
+        print(f"IndexTTS service already running at {eng.url}")
+        return
+    print(f"IndexTTS service running at {eng.url}; pipeline runs will use it. Ctrl-C to stop.")
+    try:
+        eng._proc.wait()
+    except KeyboardInterrupt:
+        print("\nstopping")
+    finally:
+        eng.close()
+
+
+if __name__ == "__main__":
+    serve_forever()

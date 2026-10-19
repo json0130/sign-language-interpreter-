@@ -16,7 +16,8 @@ from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
 from interpreter.local_tts.indextts_emotion import ALPHAS, SLOTS, VECTORS, describe, emotion_vector
 from interpreter.local_tts.indextts_engine import IndexTTSEngine
-from interpreter.local_tts.render import render_speech
+from interpreter.local_tts import config
+from interpreter.local_tts.render import render_speech, trim_silence
 from interpreter.run_pipeline import clause_line
 from interpreter.task1 import plan_speech
 
@@ -43,8 +44,9 @@ class FakeIndexTTS:
                     body = b"ValueError: boom"
                     self.send_response(400)
                 else:
-                    n = 2205 * len(req["text"].split())          # 0.1 s per word
-                    tone = array("h", (round(8000 * math.sin(i / 10)) for i in range(n)))
+                    n = 2205 * len(req["text"].split())          # 0.1 s per word, with 0.2 s silence each side
+                    tone = array("h", bytes(2 * 4410)) + array("h", (round(8000 * math.sin(i / 10)) for i in range(n))) \
+                        + array("h", bytes(2 * 4410))
                     buf = io.BytesIO()
                     with wave.open(buf, "wb") as w:
                         w.setnchannels(1)
@@ -94,6 +96,18 @@ class TestEmotionVector(unittest.TestCase):
         self.assertEqual(describe([0] * 8), "none")
 
 
+class TestDefaultsAndTrim(unittest.TestCase):
+    def test_indextts_is_the_default_on_a_port_clear_of_the_chatbox_viewer(self):
+        self.assertEqual(config.TTS_ENGINE, "indextts")
+        self.assertNotIn(":8765", config.INDEXTTS_URL)
+
+    def test_trim_silence(self):
+        sound = array("h", [0] * 1000 + [5000, -5000] * 500 + [0] * 1000)
+        out = trim_silence(sound, 10000, pad_ms=10)     # 10 ms = 100 samples of padding each side
+        self.assertEqual(len(out), 1000 + 200)
+        self.assertEqual(trim_silence(array("h", [0] * 50), 10000), array("h", [0] * 50))
+
+
 class TestEngineAndRender(unittest.TestCase):
     def setUp(self):
         self.fake = FakeIndexTTS()
@@ -103,7 +117,7 @@ class TestEngineAndRender(unittest.TestCase):
         eng = IndexTTSEngine(self.fake.url, autostart=False)
         self.assertEqual((eng.native_sample_rate, eng.reference, eng.emotional), (22050, "ref.wav", True))
         pcm, rate = eng.synthesize_emotion("one two", VECTORS["sad"], 0.7)
-        self.assertEqual((rate, len(pcm)), (22050, 2 * 2 * 2205))
+        self.assertEqual((rate, len(pcm)), (22050, 2 * (2 * 2205 + 2 * 4410)))
         self.assertEqual(self.fake.requests[-1], {"text": "one two", "emo_vector": VECTORS["sad"], "emo_alpha": 0.7,
                                                   "lang": "EN"})
 
@@ -123,6 +137,8 @@ class TestEngineAndRender(unittest.TestCase):
                          [(VECTORS["happy"], ALPHAS["happy"]), (VECTORS["sad"], ALPHAS["sad"])])
         seg = res.params["segments"]
         self.assertEqual([(s["rate"], s["pitch"]) for s in seg], [(1.0, 1.0), (1.0, 1.0)])   # no pitch trick
+        # each clause's 0.2 s padding is trimmed to 40 ms: 2 words = 0.2 s of sound + 0.08 s
+        self.assertAlmostEqual(seg[0]["duration_s"], 0.2 + 0.08, delta=0.01)
         self.assertIn("IndexTTS emotion sad 0.80, melancholic 0.20 x strength 0.70", clause_line(2, seg[1]))
 
     def test_plan_without_segments_uses_its_emotion(self):
