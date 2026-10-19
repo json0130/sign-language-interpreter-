@@ -22,7 +22,9 @@ INDEXTTS_PYTHON = _BAKEOFF / "venvs" / "indextts" / "bin" / "python"
 INDEXTTS_REPO = _BAKEOFF / "repos" / "index-tts"
 INDEXTTS_MODEL_DIR = _BAKEOFF / "models" / "indextts-2.5"
 INDEXTTS_HF_HOME = _BAKEOFF / "models" / "hf"
-INDEXTTS_REFERENCE = _BAKEOFF / "reference" / "neutral_ref.wav"   # whose voice is cloned (Kokoro bf_emma, neutral)
+# Whose voice is cloned: a short neutral clip made with Kokoro (bf_emma, Apache-2.0), kept in the repo so a fresh clone
+# (for example on the AI server) has it.
+INDEXTTS_REFERENCE = Path(__file__).resolve().parent / "assets" / "neutral_ref.wav"
 # Send phoneme hints for the kupu IndexTTS speaks (indextts_phonemes.py; drafts to be checked by a te reo speaker).
 INDEXTTS_KUPU_HINTS = True
 # Kokoro voice per language. The first letter is the accent: b = British, a = American. There is no NZ voice, so en-NZ

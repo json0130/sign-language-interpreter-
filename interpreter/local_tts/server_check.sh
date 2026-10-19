@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Can IndexTTS-2.5 be installed and run on this machine? READ-ONLY: it installs nothing and changes nothing.
 #
-#   On the AI server:        bash server_check.sh [install-dir]          (install-dir defaults to $HOME)
+#   On the AI server:        git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli
+#                            bash ~/sli/interpreter/local_tts/server_check.sh [install-dir]      (default install-dir: $HOME)
 #   From your own machine:   ssh USER@SERVER 'bash -s' < interpreter/local_tts/server_check.sh
 #
 # Prints PASS / WARN / FAIL per check and a verdict. Exit status 0 = no FAIL. The numbers come from the install done on
@@ -100,5 +101,10 @@ elif [ "$warns" -gt 0 ]; then
 else
   echo "  READY: all checks passed."
 fi
-echo "  Next: install with  bash server_install.sh $DIR   then start it and test from your machine (see the README)."
+here="${BASH_SOURCE[0]:-}"
+if [ -n "$here" ] && [ -f "$(dirname "$here")/server_install.sh" ]; then
+  echo "  Next:  bash $(cd "$(dirname "$here")" && pwd)/server_install.sh      (installs into ~/indextts-server)"
+else
+  echo "  Next:  bash ~/sli/interpreter/local_tts/server_install.sh      (after: git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli)"
+fi
 exit 0

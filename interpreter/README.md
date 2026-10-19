@@ -156,22 +156,19 @@ It needs about 5.7 GB of GPU memory. The same server can run on another machine 
 **IndexTTS on the AI server.** IndexTTS needs about 5.7 GB of GPU memory, which does not fit beside an Ollama model on the 8 GB development card. To run it on the AI server instead:
 
 ```
-# 1. On the server: can it run there? (read-only; installs nothing). From this machine:
-ssh USER@SERVER 'bash -s' < interpreter/local_tts/server_check.sh
-#    ...or copy the file there and run:  bash server_check.sh
+# --- ON THE AI SERVER ---
+git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli
+bash ~/sli/interpreter/local_tts/server_check.sh            # 1. can it run here? read-only; installs nothing
+bash ~/sli/interpreter/local_tts/server_install.sh          # 2. install into ~/indextts-server (about 20 GB, some minutes)
+tmux new -s indextts 'bash ~/indextts-server/start.sh'      # 3. start it; wait for "ready" (about a minute)
+curl http://127.0.0.1:8790/health                           #    should print {"ok": true, ...}
 
-# 2. Install (about 20 GB, several minutes). Copy four files, then run the installer on the server:
-ssh USER@SERVER mkdir -p ~/indextts-server
-scp interpreter/local_tts/{server_check.sh,server_install.sh,indextts_server.py} interpreter/bakeoff/reference/neutral_ref.wav USER@SERVER:~/indextts-server/
-ssh USER@SERVER 'bash ~/indextts-server/server_install.sh'
+# --- ON THIS MACHINE ---
+# 4. open a tunnel (the service has no password, so it listens only on the server's 127.0.0.1)
+ssh -N -L 8790:127.0.0.1:8790 USER@SERVER                   # leave this running
+curl http://127.0.0.1:8790/health                           # the same reply, now through the tunnel
 
-# 3. Start it on the server (keep it running, for example in tmux):  bash ~/indextts-server/start.sh      # prints "ready"
-
-# 4. From this machine: open a tunnel (the service has no password, so it listens only on the server's 127.0.0.1)...
-ssh -N -L 8790:127.0.0.1:8790 USER@SERVER                      # leave this running
-curl http://127.0.0.1:8790/health                              # should print {"ok": true, ...}
-
-# 5. ...and run the pipeline against it; nothing is started locally
+# 5. run the pipeline against it; nothing is started locally
 interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only e01,e03,f01 --score --indextts-url http://127.0.0.1:8790
 ```
 
