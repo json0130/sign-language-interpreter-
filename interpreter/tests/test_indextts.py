@@ -16,7 +16,7 @@ from interpreter.emotion_flow import markers_to_spans
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
 from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, SLOTS, VECTORS, describe, emotion_vector
-from interpreter.local_tts.indextts_phonemes import PHONEMES, annotate
+from interpreter.local_tts.indextts_phonemes import CANDIDATES, CHANGED, PHONEMES, annotate, candidates_for
 from interpreter.concepts import CONCEPTS
 from interpreter.local_tts.indextts_engine import IndexTTSEngine
 from interpreter.local_tts import config
@@ -132,6 +132,28 @@ class TestServerChunking(unittest.TestCase):
 class TestKupuHints(unittest.TestCase):
     def test_every_concept_has_a_hint(self):
         self.assertEqual(set(PHONEMES), set(CONCEPTS))
+
+    def test_hints_use_only_cmu_phonemes(self):
+        vowels = {"AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH", "UW"}
+        consonants = {"B", "CH", "D", "DH", "F", "G", "HH", "JH", "K", "L", "M", "N", "NG", "P", "R", "S", "SH", "T",
+                      "TH", "V", "W", "Y", "Z", "ZH"}
+        for slug, hint in [*PHONEMES.items(), *((s, h) for s, hs in CANDIDATES.items() for h in hs)]:
+            for symbol in hint.split():
+                ok = symbol == "." or symbol in consonants or (symbol[:-1] in vowels and symbol[-1] in "012")
+                self.assertTrue(ok, f"{slug}: {symbol!r} in {hint!r}")
+
+    def test_short_a_is_ah_long_a_is_aa(self):
+        self.assertIn("AA", PHONEMES["ck:whanau"])                   # whā-: long
+        self.assertTrue(PHONEMES["ck:whare"].startswith("F AH1"))   # wha-: short
+        self.assertNotIn("AA", PHONEMES["ck:tamariki"])
+
+    def test_audition_candidates(self):
+        cands = candidates_for("ck:whare")
+        self.assertEqual(cands[0], ("no hint (IndexTTS guesses)", None))
+        self.assertEqual(cands[1][1], PHONEMES["ck:whare"])
+        self.assertTrue(cands[1][0].endswith("<- current"))
+        self.assertEqual(candidates_for("ck:whare", ["F AH1 . D EH0"])[1:], [("F AH1 . D EH0", "F AH1 . D EH0")])
+        self.assertEqual(len(CHANGED), 5)
 
     def test_annotate(self):
         self.assertEqual(annotate("My whānau are at the hui."),
