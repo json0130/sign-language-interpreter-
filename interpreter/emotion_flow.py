@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from interpreter.contracts import EMOTIONS, LANGS, Emotion, EmotionSpan
-from interpreter.emotion import CANONICAL_VA, RULE_CONFIDENCE, match_rule
+from interpreter.emotion import CANONICAL_VA, RULE_CONFIDENCE, match_rule, nearest_label
 from interpreter.prosody_profiles import CLAMPS, PROFILES, strength
 
 HERE = Path(__file__).resolve().parent
@@ -51,10 +51,6 @@ class Segment:
     @property
     def label(self) -> str:
         return nearest_label(self.valence, self.arousal)
-
-
-def nearest_label(valence: float, arousal: float) -> str:
-    return min(CANONICAL_VA, key=lambda l: (CANONICAL_VA[l][0] - valence) ** 2 + (CANONICAL_VA[l][1] - arousal) ** 2)
 
 
 def markers_to_spans(marked_text: str, confidence: float = MARKER_CONFIDENCE) -> Tuple[str, List[EmotionSpan]]:
@@ -154,6 +150,7 @@ def main(argv=None) -> None:
     from dataclasses import replace
 
     from interpreter.contracts import Prosody, SpeechSegment
+    from interpreter.emotion import prepare_emotion
     from interpreter.kg.demo import demo_graph
     from interpreter.kg.provider import KGContext
     from interpreter.task1 import Task1Config, plan_speech
@@ -184,7 +181,7 @@ def main(argv=None) -> None:
     for row in rows:
         f, e = row.frame, row.frame.emotion
         previous = state.get(f.speaker_id) if args.carry else None
-        plan = plan_speech(f, ctx, cfg, target_lang=args.target_lang, previous=previous)
+        plan = plan_speech(prepare_emotion(f)[0], ctx, cfg, target_lang=args.target_lang, previous=previous)
         print(f"\n===== {f.frame_id}  sentence emotion {e.label} (confidence {e.confidence:.2f})"
               + (f"  [carried state {previous}]" if previous else ""))
         print(f'  "{row.marked_text}"')

@@ -21,7 +21,7 @@ from typing import Optional
 from interpreter.baseline import baseline_task2
 from interpreter.concepts import CONCEPTS, find_kupu, gloss
 from interpreter.contracts import EMOTIONS, LANGS, SpeechPlan
-from interpreter.emotion import CANONICAL_VA, MIN_CONFIDENCE, match_rule, refine_emotion
+from interpreter.emotion import CANONICAL_VA, MIN_CONFIDENCE, guard_grammar, match_rule, refine_emotion
 from interpreter.emotion_flow import SpeakerState, describe
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.graph import Graph
@@ -77,19 +77,21 @@ def make_task1(ctx: KGContext, cfg: Task1Config, target_lang, trace: Tracer, sta
                     f"recogniser emotion: {e.label} (confidence {e.confidence:.2f}); "
                     f"recogniser input confidence: {frame.input_confidence:.2f}")
 
-        refined = refine_emotion(frame)
-        if e.confidence >= MIN_CONFIDENCE:
-            note = f"keep the recogniser's {e.label}: confidence {e.confidence:.2f} >= {MIN_CONFIDENCE:.2f}"
-        elif refined is not frame:
+        guarded, guard_notes = guard_grammar(frame)
+        refined = refine_emotion(guarded)
+        g = guarded.emotion
+        if g.confidence >= MIN_CONFIDENCE:
+            note = f"keep the recogniser's {g.label}: confidence {g.confidence:.2f} >= {MIN_CONFIDENCE:.2f}"
+        elif refined is not guarded:
             _, matched = match_rule(frame.text)
             v, a = CANONICAL_VA[refined.emotion.label]
-            note = (f'recogniser confidence {e.confidence:.2f} < {MIN_CONFIDENCE:.2f}: text rule matched "{matched}"'
+            note = (f'confidence {g.confidence:.2f} < {MIN_CONFIDENCE:.2f}: text rule matched "{matched}"'
                     f" -> {refined.emotion.label} (confidence {refined.emotion.confidence:.2f}, "
                     f"valence {v:+.1f}, arousal {a:+.1f})")
         else:
-            note = (f"recogniser confidence {e.confidence:.2f} < {MIN_CONFIDENCE:.2f} but no text rule matched: "
-                    f"keep {e.label}")
-        trace.stage(2, 5, "EMOTION", note)
+            note = (f"confidence {g.confidence:.2f} < {MIN_CONFIDENCE:.2f} but no text rule matched: "
+                    f"keep {g.label}")
+        trace.stage(2, 5, "EMOTION", *(f"grammar guard: {n}" for n in guard_notes), note)
 
         if frame.input_confidence < cfg.clarify_threshold:
             trace.stage(3, 5, "KG", "skipped: this frame becomes a clarification request")
@@ -173,8 +175,11 @@ def clause_line(k: int, params: dict) -> str:
 
 
 def emotion_source(frame) -> str:
-    if refine_emotion(frame) is not frame:
-        return "text rule"
+    guarded, notes = guard_grammar(frame)
+    if refine_emotion(guarded) is not guarded:
+        return "text rule" + (" after guard" if notes else "")
+    if guarded.emotion is not frame.emotion:
+        return "guarded"
     return "recogniser (weak)" if frame.emotion.confidence < MIN_CONFIDENCE else "recogniser"
 
 
@@ -441,9 +446,9 @@ def main(argv=None) -> None:
                for f, p, _ in results.values() if isinstance(p, SpeechPlan)]
     if summary:
         print("\nSUMMARY")
-        print(f"  {'id':<7}{'listener':<19}{'emotion (source)':<30}says")
+        print(f"  {'id':<7}{'listener':<19}{'emotion (source)':<36}says")
         for row in summary:
-            print(f"  {row[0]:<7}{row[1]:<19}{row[2]:<30}{row[3]}")
+            print(f"  {row[0]:<7}{row[1]:<19}{row[2]:<36}{row[3]}")
     if scorer:
         scorer.report()
     spoken = len(summary)

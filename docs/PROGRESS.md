@@ -34,8 +34,9 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | I2 | Jay's scoring (2026-10-19, `listening_results/`): IndexTTS 19/26 sentences passed every check (words 26/26, emotion 9/10, flow 16/16, natural 24/26); Kokoro failed on emotion. IndexTTS made the default; clause silence trimmed before joining (about 1.2 s less dead air per flow sentence); service moved to port 8790 (8765 clashed with the ChatBox graph viewer); keep-alive command. | +2 |
 | I3 | Draft CMU phoneme hints for the nine kupu sent to IndexTTS for te reo listeners (to be checked by a te reo speaker; `--no-kupu-hints` to compare); the service chunks text itself so hints are never split (IndexTTS's low-VRAM splitter broke them); flows softened to 0.8 strength. | +6 |
 | I4 | Kupu hints rebuilt from published pronunciations (Wiktionary Māori IPA, Victoria University of Wellington guide): short a is AH, long ā is AA (the first draft used AA everywhere, which is why whare sounded wrong). Audition tool `python -m interpreter.local_tts.indextts_phonemes <kupu>` / `--changed` plays numbered candidates. | +3 |
+| E1 | Grammar-vs-emotion guard: in a plain question, face readings that eyebrow grammar can produce (surprised for yes/no; angry, confused for wh) are set aside as neutral; words can still add emotion. Five question test sentences (g01–g05). Kupu pronunciation parked (needs a te reo voice, e.g. Te Hiku Media's). | +9 |
 
-Total: 191 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 200 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 

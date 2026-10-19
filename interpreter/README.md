@@ -103,7 +103,7 @@ Placeholders: the demo graph's culture priors are guesses, and which kupu a comm
 
 ## Test sentences, emotion flow and voice
 
-**Test sentences** live in one file, `interpreter/mocks/testset.csv` (26 rows). Every sentence is pure English or English with a few kupu Māori that the KG can replace (kia ora, whānau, hui, kai, mahi, tamariki, whare, kōrero, koha), in four groups: `e` pure English, `k` English with kupu for different listeners, `f` sentences where the signer's emotion changes part way (written as `{emotion}` markers), and `r` sentences whose clauses change emotion through their own words. Columns: `id, mix, text, emotion, confidence, listener, concepts, notes` (see `interpreter/testset.py`).
+**Test sentences** live in one file, `interpreter/mocks/testset.csv` (31 rows). Every sentence is pure English or English with a few kupu Māori that the KG can replace (kia ora, whānau, hui, kai, mahi, tamariki, whare, kōrero, koha), in five groups: `e` pure English, `k` English with kupu for different listeners, `f` sentences where the signer's emotion changes part way (written as `{emotion}` markers), `r` sentences whose clauses change emotion through their own words, and `g` questions for the grammar-vs-emotion guard. Columns: `id, mix, text, emotion, confidence, listener, concepts, notes` (see `interpreter/testset.py`).
 
 ```
 interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play                  # every sentence: stages, then spoken
@@ -134,6 +134,8 @@ interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --score --tts
 A sentence passes when every check asked is yes (any no fails it; a skip makes it incomplete).
 
 Each sentence prints its "listen for" note and the five stages, then plays. Stage 4 shows the **emotion flow**: the sentence split into clauses, each with its own emotion (from the recogniser's span, a text rule, or the sentence emotion), valence/arousal and delivery (rate, pitch, volume). Stage 5 shows the voice and what was applied to each clause. A summary table ends the run. `--carry` carries each speaker's emotion from one sentence to the next (off by default, so every test sentence starts fresh). Listeners in the demo graph: `person:aroha`, `person:rawiri` (tagged Māori: te reo kept), `person:staff_01` (knows whānau only), `person:visitor_01`, `person:visitor_02` (no te reo: kupu replaced with English).
+
+**Grammar vs emotion** (`guard_grammar` in `interpreter/emotion.py`): in NZSL, as in many sign languages, the face also does grammar. Raised eyebrows can mark a yes/no question and furrowed eyebrows a wh-question, and a face-reading emotion recogniser can mistake them for "surprised" or "angry"/"confused". When a sentence (or one emotion span of it) is a plain question, those look-alike readings are set aside as neutral with 0.4 of their confidence; the words can still add an emotion through the text rules ("Wow, really?" stays surprised). Stage 2 of the trace says when this happens. The look-alike table needs confirming with Deaf advisers. Test sentences g01–g05 cover it.
 
 **Emotion flow** (`interpreter/emotion_flow.py`; contract schema 0.3: `InterpretationFrame.emotion_flow` spans in, `SpeechPlan.segments` out). Clauses break at `. ! ? ;`, before ", but" / ", so" / ", although" / ", and then", and where a recogniser span starts. Unmarked clauses keep 30% of the previous clause so the voice does not jump. Delivery is a smooth blend of the emotion profiles. The renderer speaks each clause with its own delivery and joins them with a 120 ms gap. To compare one emotion against the flow for the same sentence:
 
@@ -186,4 +188,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: kupu pronunciation parked (needs a te reo voice); next focus: Māori sign to English emotion, and the interpreter's actions.
+Status: grammar-vs-emotion guard added (g01–g05); next: Pepper's body language and emotion-driven delivery.

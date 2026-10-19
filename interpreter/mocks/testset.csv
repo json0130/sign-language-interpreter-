@@ -25,3 +25,8 @@ r03,english+kupu,"Wow, the kai is amazing! Thank you so much.",neutral,0.3,perso
 r04,english,This is unacceptable. I have been waiting for an hour.,neutral,0.3,person:visitor_01,,Weak emotion: rules make the first clause angry and it carries a little into the second
 r05,english+kupu,"I miss my whānau back home, but I'm glad to be here with you.",sad,0.7,person:visitor_01,,No markers: sad then glad (happy) blended with the sad sentence
 r06,english+kupu,"We missed the start of the hui, but the mahi went well.",neutral,0.5,person:visitor_01,,No markers: missed (anxious) then neutral
+g01,english+kupu,Is the hui tomorrow?,surprised,0.8,person:visitor_01,,Question: raised brows read as surprised are set aside (grammar guard); a plain question
+g02,english+kupu,Which room is the hui in?,angry,0.75,person:visitor_01,,Question: furrowed brows read as angry are set aside; should not sound angry
+g03,english+kupu,"Wow, really? You finished the whare?",surprised,0.85,person:visitor_01,,Genuine surprise in a question: the guard sets the face aside but the word wow keeps it surprised
+g04,english,{surprised}Are you serious? {angry}Nobody told us!,angry,0.85,person:visitor_01,,Only the question part is guarded; the anger in Nobody told us! stays
+g05,english+kupu,Where is my whānau?,anxious,0.8,person:visitor_01,,Anxious is not a brow look-alike: kept as a worried question
