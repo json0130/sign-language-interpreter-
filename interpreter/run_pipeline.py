@@ -342,6 +342,9 @@ def main(argv=None) -> None:
                     help="voice engine: indextts (default; real emotion input; starts its service on first use, about a "
                          "minute), kokoro (emotion only via our rate/pitch/volume) or piper")
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
+    ap.add_argument("--indextts-url", metavar="URL",
+                    help="use an IndexTTS service that is already running (for example http://127.0.0.1:8790 through an "
+                         "SSH tunnel to the AI server) instead of starting one here; same as the INDEXTTS_URL variable")
     ap.add_argument("--no-kupu-hints", action="store_true",
                     help="IndexTTS: do not send phoneme hints for kupu Māori (to compare with and without)")
     ap.add_argument("--carry", action="store_true",
@@ -358,6 +361,9 @@ def main(argv=None) -> None:
 
     verbose = not args.quiet
     quiet_library_noise()
+    if args.indextts_url:
+        from interpreter.local_tts import config as tts_config
+        tts_config.INDEXTTS_URL, tts_config.INDEXTTS_AUTOSTART = args.indextts_url, False
     if args.no_kupu_hints:
         from interpreter.local_tts import config as tts_config
         tts_config.INDEXTTS_KUPU_HINTS = False

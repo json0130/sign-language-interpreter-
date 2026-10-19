@@ -153,6 +153,30 @@ interpreter/.venv/bin/python -m interpreter.local_tts.indextts_engine     # Ctrl
 
 It needs about 5.7 GB of GPU memory. The same server can run on another machine (`--host 0.0.0.0`, then set `INDEXTTS_URL` in `local_tts/config.py`); it has no authentication, so only on a trusted network. `--tts kokoro` or `--tts piper` switch back; Kokoro uses `bf_emma` (en-NZ) and `af_heart` (en-US), set in `KOKORO_VOICES`.
 
+**IndexTTS on the AI server.** IndexTTS needs about 5.7 GB of GPU memory, which does not fit beside an Ollama model on the 8 GB development card. To run it on the AI server instead:
+
+```
+# 1. On the server: can it run there? (read-only; installs nothing). From this machine:
+ssh USER@SERVER 'bash -s' < interpreter/local_tts/server_check.sh
+#    ...or copy the file there and run:  bash server_check.sh
+
+# 2. Install (about 20 GB, several minutes). Copy four files, then run the installer on the server:
+ssh USER@SERVER mkdir -p ~/indextts-server
+scp interpreter/local_tts/{server_check.sh,server_install.sh,indextts_server.py} interpreter/bakeoff/reference/neutral_ref.wav USER@SERVER:~/indextts-server/
+ssh USER@SERVER 'bash ~/indextts-server/server_install.sh'
+
+# 3. Start it on the server (keep it running, for example in tmux):  bash ~/indextts-server/start.sh      # prints "ready"
+
+# 4. From this machine: open a tunnel (the service has no password, so it listens only on the server's 127.0.0.1)...
+ssh -N -L 8790:127.0.0.1:8790 USER@SERVER                      # leave this running
+curl http://127.0.0.1:8790/health                              # should print {"ok": true, ...}
+
+# 5. ...and run the pipeline against it; nothing is started locally
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only e01,e03,f01 --score --indextts-url http://127.0.0.1:8790
+```
+
+`INDEXTTS_URL=http://127.0.0.1:8790` in the environment does the same as `--indextts-url` for every command (including `emotion_flow`). If the tunnel is down the pipeline says so instead of starting a local copy. The same files work for any machine with an NVIDIA GPU of 6 GB free or more and a driver of 570 or newer.
+
 **Kupu pronunciation (IndexTTS):** kupu are replaced with English for listeners who do not know them. For listeners who do, IndexTTS now gets a phoneme hint for each kupu (`<whānau|F AA1 . N AW0>`, from `interpreter/local_tts/indextts_phonemes.py`), because its English voice mispronounced them (Jay's scoring: e02, k02, f08). The hints are built from published pronunciations (Wiktionary's Māori IPA and the Victoria University of Wellington te reo guide; the first draft wrongly used the long "car" vowel for every short *a*), but English phonemes only approximate te reo, so they must be checked by ear; audition the candidates for a kupu with `interpreter/.venv/bin/python -m interpreter.local_tts.indextts_phonemes whare` (or `--changed` for every hint that changed); the trace shows the exact text sent ("sent to IndexTTS: ..."). Compare with and without: `--only e02,k02,k05,f08 --step` and the same with `--no-kupu-hints`. The service chunks text itself so a hint is never split (IndexTTS's own low-memory splitter cut hints at their dots and read the stress digits aloud).
 
 *Status of the hints (Jay's audition, 2026-10-19):* tamariki works with D for the tapped r; whare and kia ora sounded wrong in every version (including no hint); mahi and koha unclear. IndexTTS's English voice cannot say these well, so kupu pronunciation is **parked**. The proper fix is a te reo Māori voice, such as Te Hiku Media's te reo TTS (Papa Reo); access goes through Te Hiku Media under their data-sovereignty terms, which need checking with them or advisers.
@@ -188,4 +212,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: grammar-vs-emotion guard added (g01–g05); next: Pepper's body language and emotion-driven delivery.
+Status: IndexTTS can run on the AI server (preflight check, installer and tunnel instructions added; not yet tried on the server).

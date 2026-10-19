@@ -60,14 +60,18 @@ class IndexTTSEngine:
     emotional = True
     base_length_scale = 1.0
 
-    def __init__(self, url: Optional[str] = None, autostart: bool = True, start_timeout: float = 300) -> None:
+    def __init__(self, url: Optional[str] = None, autostart: Optional[bool] = None, start_timeout: float = 300) -> None:
         self.url = (url or config.INDEXTTS_URL).rstrip("/")
+        if autostart is None:
+            autostart = config.INDEXTTS_AUTOSTART
         self._proc = None
         info = self._health()
         if info is None:
             host = urlparse(self.url).hostname
             if not autostart or host not in ("127.0.0.1", "localhost"):
-                raise RuntimeError(f"IndexTTS service not reachable at {self.url}")
+                raise RuntimeError(f"IndexTTS service not reachable at {self.url}. If it runs on another machine, is the "
+                                   "SSH tunnel up (ssh -N -L 8790:127.0.0.1:8790 USER@SERVER) and the service started there? "
+                                   "Or run with --tts kokoro")
             info = self._start(start_timeout)
         self.native_sample_rate = int(info["sample_rate"])
         self.reference = info.get("reference", "")

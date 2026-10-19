@@ -19,9 +19,9 @@ from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, SLOTS,
 from interpreter.local_tts.indextts_phonemes import CANDIDATES, CHANGED, PHONEMES, annotate, candidates_for
 from interpreter.concepts import CONCEPTS
 from interpreter.local_tts.indextts_engine import IndexTTSEngine, gpu_users, start_failure_message
-from interpreter.local_tts import config
+from interpreter.local_tts import config, engines
 from interpreter.local_tts.render import render_speech, trim_silence
-from interpreter.run_pipeline import clause_line
+from interpreter.run_pipeline import clause_line, main as pipeline_main
 from interpreter.task1 import plan_speech
 
 
@@ -97,6 +97,47 @@ class TestEmotionVector(unittest.TestCase):
     def test_describe(self):
         self.assertEqual(describe(VECTORS["sad"]), "sad 0.80, melancholic 0.20")
         self.assertEqual(describe([0] * 8), "none")
+
+
+class TestRemoteService(unittest.TestCase):
+    """The AI-server setup: a service that is already running (through an SSH tunnel) is used and never started locally."""
+
+    def setUp(self):
+        self.fake = FakeIndexTTS()
+        self.addCleanup(self.fake.close)
+        self.addCleanup(engines._ENGINES.clear)
+        for name in ("INDEXTTS_URL", "INDEXTTS_AUTOSTART"):
+            patcher = mock.patch.object(config, name, getattr(config, name))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_pipeline_uses_the_running_service(self):
+        from interpreter.tests.test_testset_flow import temp_csv, CSV
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            pipeline_main(["--testset", str(temp_csv(CSV)), "--only", "a4", "--tts", "indextts",
+                           "--out", tempfile.mkdtemp(), "--indextts-url", self.fake.url])
+        self.assertEqual(self.fake.requests[0]["text"], "Thanks so much, that was really helpful!")
+        self.assertNotIn("starting the IndexTTS service", buf.getvalue())
+        self.assertEqual((config.INDEXTTS_URL, config.INDEXTTS_AUTOSTART), (self.fake.url, False))
+
+    def test_unreachable_tunnel_says_what_to_check(self):
+        config.INDEXTTS_AUTOSTART = False
+        with self.assertRaisesRegex(RuntimeError, "SSH tunnel up.*--tts kokoro"):
+            IndexTTSEngine("http://127.0.0.1:9")                  # nothing listens there; must not start a local copy
+
+    def test_environment_variable_turns_autostart_off(self):
+        import os
+        import subprocess
+        import sys
+        code = "from interpreter.local_tts import config as c; print(c.INDEXTTS_URL, c.INDEXTTS_AUTOSTART)"
+        root = str(Path(__file__).resolve().parents[2])
+        run = lambda extra: subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=root,
+                                           env={k: v for k, v in {**os.environ, **extra}.items() if k != "INDEXTTS_URL"
+                                                or extra}).stdout.split()
+        self.assertEqual(run({}), ["http://127.0.0.1:8790", "True"])
+        self.assertEqual(run({"INDEXTTS_URL": "http://10.0.0.5:8790"}), ["http://10.0.0.5:8790", "False"])
 
 
 class TestStartFailure(unittest.TestCase):
