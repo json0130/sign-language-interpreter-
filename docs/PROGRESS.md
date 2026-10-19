@@ -32,9 +32,9 @@ Pepper becomes an interpreter between a Turi Māori / NZSL signer and a non-sign
 | S1 | `run_pipeline --step` (one sentence at a time: next, previous, replay, jump, quit) and `--score` (the seven-check marking scheme after each sentence, saved to CSV, with a pass-rate report). | +5 |
 | I1 | IndexTTS-2.5 wired in as `--tts indextts`: per-clause emotion vector and strength from the emotion flow, served from its own venv by a local HTTP service that the pipeline starts on demand; quieter library warnings in the trace. Not yet listened to through the pipeline. | +10 |
 | I2 | Jay's scoring (2026-10-19, `listening_results/`): IndexTTS 19/26 sentences passed every check (words 26/26, emotion 9/10, flow 16/16, natural 24/26); Kokoro failed on emotion. IndexTTS made the default; clause silence trimmed before joining (about 1.2 s less dead air per flow sentence); service moved to port 8790 (8765 clashed with the ChatBox graph viewer); keep-alive command. | +2 |
-| I3 | Draft CMU phoneme hints for the nine kupu sent to IndexTTS for te reo listeners (to be checked by a te reo speaker; `--no-kupu-hints` to compare); the service chunks text itself so hints are never split (IndexTTS's low-VRAM splitter broke them); flows softened to 0.8 strength. | +9 |
+| I3 | Draft CMU phoneme hints for the nine kupu sent to IndexTTS for te reo listeners (to be checked by a te reo speaker; `--no-kupu-hints` to compare); the service chunks text itself so hints are never split (IndexTTS's low-VRAM splitter broke them); flows softened to 0.8 strength. | +6 |
 
-Total: 191 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
+Total: 188 tests, standard library only except the optional Piper venv and the bake-off tooling. Run from the repo root with the venv Python: `interpreter/.venv/bin/python -m unittest discover -s interpreter/tests -t . -v`.
 
 ### What the Task 1 output looks like
 
