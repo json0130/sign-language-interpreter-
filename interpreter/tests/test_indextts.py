@@ -18,7 +18,7 @@ from interpreter.kg.provider import KGContext
 from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, SLOTS, VECTORS, describe, emotion_vector
 from interpreter.local_tts.indextts_phonemes import CANDIDATES, CHANGED, PHONEMES, annotate, candidates_for
 from interpreter.concepts import CONCEPTS
-from interpreter.local_tts.indextts_engine import IndexTTSEngine
+from interpreter.local_tts.indextts_engine import IndexTTSEngine, gpu_users, start_failure_message
 from interpreter.local_tts import config
 from interpreter.local_tts.render import render_speech, trim_silence
 from interpreter.run_pipeline import clause_line
@@ -97,6 +97,28 @@ class TestEmotionVector(unittest.TestCase):
     def test_describe(self):
         self.assertEqual(describe(VECTORS["sad"]), "sad 0.80, melancholic 0.20")
         self.assertEqual(describe([0] * 8), "none")
+
+
+class TestStartFailure(unittest.TestCase):
+    OOM = "...\ntorch.OutOfMemoryError: CUDA out of memory. Tried to allocate 26.00 MiB. GPU 0 has a total capacity of 7.52 GiB"
+
+    def test_out_of_memory_names_the_gpu_users_and_the_fixes(self):
+        msg = start_failure_message(self.OOM, ["pid 123 (ollama llama-server): 4666 MiB"])
+        self.assertIn("out of memory", msg)
+        self.assertIn("pid 123 (ollama llama-server): 4666 MiB", msg)
+        self.assertIn("ollama stop", msg)
+        self.assertIn("--tts kokoro", msg)
+        self.assertNotIn("Traceback", msg)
+
+    def test_other_failures_show_the_log_tail(self):
+        msg = start_failure_message("line1\nline2\nValueError: bad config", [])
+        self.assertIn("ValueError: bad config", msg)
+        self.assertNotIn("out of memory", msg)
+
+    def test_gpu_users_tolerates_no_nvidia_smi(self):
+        with mock.patch("interpreter.local_tts.indextts_engine.subprocess.run", side_effect=FileNotFoundError):
+            self.assertEqual(gpu_users(), [])
+        self.assertIn("could not read nvidia-smi", start_failure_message(self.OOM, []))
 
 
 class TestDefaultsAndTrim(unittest.TestCase):

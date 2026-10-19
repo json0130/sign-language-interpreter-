@@ -24,6 +24,38 @@ LOG = Path(__file__).resolve().parent.parent / "audio_out" / "indextts_server.lo
 NEUTRAL = ([0, 0, 0, 0, 0, 0, 0, 0.8], 0.5)
 
 
+def gpu_users() -> List[str]:
+    """['pid 123 (ollama llama-server): 4666 MiB', ...] for the programs using the GPU; [] if it cannot be read."""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    users = []
+    for line in out.strip().splitlines():
+        pid, _, mib = (x.strip() for x in line.partition(","))
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                argv = fh.read().split(b"\0")
+            name = "/".join(argv[0].decode(errors="replace").split("/")[-2:])      # e.g. ollama/llama-server
+        except OSError:
+            name = "unknown"
+        users.append(f"pid {pid} ({name[:60]}): {mib} MiB")
+    return users
+
+
+def start_failure_message(log_text: str, users=None) -> str:
+    """Why the service exited while starting, in plain words for the common case (the GPU is full)."""
+    tail = log_text.strip().splitlines()[-5:]
+    if "OutOfMemoryError" not in log_text:
+        return "IndexTTS service exited while starting (or use --tts kokoro):\n  " + "\n  ".join(tail)
+    users = gpu_users() if users is None else users
+    return ("IndexTTS could not start: the GPU is out of memory (it needs about 5.7 GB). Programs using the GPU now:\n  "
+            + ("\n  ".join(users) if users else "(could not read nvidia-smi)")
+            + "\nClose the other GPU program and run again (for Ollama: `ollama ps` to see it, `ollama stop <model>` "
+              "to unload it; it also unloads itself after about 5 minutes), or run with `--tts kokoro`.")
+
+
 class IndexTTSEngine:
     emotional = True
     base_length_scale = 1.0
@@ -65,9 +97,8 @@ class IndexTTSEngine:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._proc.poll() is not None:
-                tail = LOG.read_text(errors="replace").strip().splitlines()[-5:]
-                raise RuntimeError("IndexTTS service exited while starting (or use --tts kokoro):\n  "
-                                   + "\n  ".join(tail))
+                print()
+                raise RuntimeError(start_failure_message(LOG.read_text(errors="replace")))
             info = self._health()
             if info is not None:
                 print(" ready", flush=True)
