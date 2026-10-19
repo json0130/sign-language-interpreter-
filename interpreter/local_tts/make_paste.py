@@ -2,8 +2,11 @@
 
     python3 -m interpreter.local_tts.make_paste [out-dir]        (default: interpreter/audio_out/server_paste/)
 
-    1_check.txt    pastes server_check.sh into ~/server_check.sh and runs it (read-only; installs nothing)
-    2_install.txt  pastes indextts_server.py and server_install.sh into ~/indextts-server and runs the installer
+    1_check.txt    pastes server_check.sh into $TMPDIR/server_check.sh (default /tmp) and runs it (creates nothing else)
+    2_install.txt  pastes indextts_server.py and server_install.sh into the install folder and runs the installer
+
+The install folder is $INDEXTTS_DIR if you set it before pasting (export INDEXTTS_DIR=/big/volume/indextts-server), else
+~/indextts-server. The check measures free disk there.
 
 The files are generated from the real scripts, so they cannot drift. Only the 160 KB voice clip is not text: the installer
 downloads it, and says exactly what to copy if the download is blocked.
@@ -23,12 +26,14 @@ def heredoc(dest: str, name: str) -> str:
 
 
 def check_text() -> str:
-    return heredoc("~/server_check.sh", "server_check.sh") + "bash ~/server_check.sh\n"
+    return (heredoc('"${TMPDIR:-/tmp}/server_check.sh"', "server_check.sh")
+            + 'bash "${TMPDIR:-/tmp}/server_check.sh" "${INDEXTTS_DIR:-$HOME}"\n')
 
 
 def install_text() -> str:
-    return ("mkdir -p ~/indextts-server && cd ~/indextts-server\n" + heredoc("indextts_server.py", "indextts_server.py")
-            + heredoc("server_install.sh", "server_install.sh") + "bash server_install.sh\n")
+    return ('D="${INDEXTTS_DIR:-$HOME/indextts-server}"; mkdir -p "$D" && cd "$D" || exit 1\n'
+            + heredoc("indextts_server.py", "indextts_server.py") + heredoc("server_install.sh", "server_install.sh")
+            + 'bash server_install.sh "$D"\n')
 
 
 def main(argv=None) -> None:

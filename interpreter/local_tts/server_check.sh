@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Can IndexTTS-2.5 be installed and run on this machine? READ-ONLY: it installs nothing and changes nothing.
 #
-#   On the AI server:        git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli
-#                            bash ~/sli/interpreter/local_tts/server_check.sh [install-dir]      (default install-dir: $HOME)
+#   On the AI server:        bash server_check.sh [install-dir]      (install-dir: where it would go; default $INDEXTTS_DIR or $HOME)
 #   From your own machine:   ssh USER@SERVER 'bash -s' < interpreter/local_tts/server_check.sh
+#   In a sandbox that cannot reach the GPU driver or the network, set SKIP_NETWORK=1 to skip the download checks.
+# It creates no files or folders (the disk check measures the nearest folder that already exists).
 #
 # Prints PASS / WARN / FAIL per check and a verdict. Exit status 0 = no FAIL. The numbers come from the install done on
 # the development machine (RTX 5060, 8 GB): peak GPU memory 5.7 GB while speaking, 8.3 GB environment, 11 GB weights.
 # Compute capability and driver limits for PyTorch 2.8 with CUDA 12.8 are from PyTorch's documentation, not tested here.
 
-DIR="${1:-$HOME}"
+DIR="${1:-${INDEXTTS_DIR:-$HOME}}"
 PORT="${INDEXTTS_PORT:-8790}"
 NEED_FREE_MIB=6500        # free GPU memory to run comfortably (peak use was 5.7 GB = about 5800 MiB)
 MIN_FREE_MIB=6000
@@ -61,11 +62,13 @@ else
 fi
 
 echo; echo "Disk, memory, port"
-mkdir -p "$DIR" 2>/dev/null
-free_gb=$(df -Pk "$DIR" 2>/dev/null | awk 'NR==2 {printf "%d", $4/1048576}')
+probe="$DIR"
+while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do probe="$(dirname "$probe")"; done      # nearest folder that exists
+free_gb=$(df -Pk "$probe" 2>/dev/null | awk 'NR==2 {printf "%d", $4/1048576}')
+where="$DIR"; [ "$probe" != "$DIR" ] && where="$DIR (measured at $probe, which exists)"
 if [ -z "$free_gb" ]; then fail "cannot read free space for $DIR"
-elif [ "$free_gb" -ge "$NEED_DISK_GB" ]; then pass "disk: ${free_gb} GB free at $DIR (needs about 20, ${NEED_DISK_GB}+ is comfortable)"
-else fail "disk: only ${free_gb} GB free at $DIR; needs about ${NEED_DISK_GB} GB (pass another directory: bash server_check.sh /bigger/disk)"; fi
+elif [ "$free_gb" -ge "$NEED_DISK_GB" ]; then pass "disk: ${free_gb} GB free at $where (needs about 20, ${NEED_DISK_GB}+ is comfortable)"
+else fail "disk: only ${free_gb} GB free at $where; needs about ${NEED_DISK_GB} GB. Try the big volume: bash server_check.sh /path/to/big/volume/indextts-server"; fi
 ram_gb=$(awk '/MemAvailable/ {printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null)
 if [ -z "$ram_gb" ]; then warn "cannot read available RAM"
 elif [ "$ram_gb" -ge "$NEED_RAM_GB" ]; then pass "RAM: ${ram_gb} GB available"
@@ -83,7 +86,9 @@ if have ssh; then pass "ssh (for the tunnel from your machine)"; fi
 
 echo; echo "Network (the install downloads from these)"
 for url in https://github.com https://huggingface.co https://pypi.org https://download.pytorch.org https://files.pythonhosted.org https://astral.sh; do
-  if have curl; then
+  if [ -n "${SKIP_NETWORK:-}" ]; then
+    echo "  SKIP  $url (SKIP_NETWORK is set: not checked)"
+  elif have curl; then
     code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' -I "$url" 2>/dev/null)
     case "$code" in
       2*|3*|4*) pass "$url reachable (HTTP $code)" ;;
@@ -103,8 +108,8 @@ else
 fi
 here="${BASH_SOURCE[0]:-}"
 if [ -n "$here" ] && [ -f "$(dirname "$here")/server_install.sh" ]; then
-  echo "  Next:  bash $(cd "$(dirname "$here")" && pwd)/server_install.sh      (installs into ~/indextts-server)"
+  echo "  Next:  bash $(cd "$(dirname "$here")" && pwd)/server_install.sh $DIR"
 else
-  echo "  Next:  bash ~/sli/interpreter/local_tts/server_install.sh      (after: git clone -b feature/sign-language-project https://github.com/json0130/sign-language-interpreter-.git ~/sli)"
+  echo "  Next:  run the install step with the same folder:  export INDEXTTS_DIR=$DIR"
 fi
 exit 0

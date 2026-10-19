@@ -178,7 +178,7 @@ interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only e01,e0
 python3 -m interpreter.local_tts.make_paste        # writes interpreter/audio_out/server_paste/1_check.txt and 2_install.txt
 ```
 
-`1_check.txt` writes the read-only check to `~/server_check.sh` and runs it; `2_install.txt` writes `indextts_server.py` and the installer into `~/indextts-server` and runs the installer. The one non-text file, the 160 KB voice clip, is downloaded by the installer; if that is blocked it tells you to copy `interpreter/local_tts/assets/neutral_ref.wav` to `~/indextts-server/` and run `bash server_install.sh` again.
+Set the install folder first if your home disk is small (`export INDEXTTS_DIR=/big/volume/indextts-server`; everything, including uv and its cache, goes there and nothing in your home folder). `1_check.txt` writes the check to `$TMPDIR/server_check.sh` (default `/tmp`) and runs it; it creates no other files or folders. `2_install.txt` writes `indextts_server.py` and the installer into the install folder and runs the installer. The one non-text file, the 160 KB voice clip, is downloaded by the installer; if that is blocked it tells you to copy `interpreter/local_tts/assets/neutral_ref.wav` to `~/indextts-server/` and run `bash server_install.sh` again.
 
 `INDEXTTS_URL=http://127.0.0.1:8790` in the environment does the same as `--indextts-url` for every command (including `emotion_flow`). If the tunnel is down the pipeline says so instead of starting a local copy. The same files work for any machine with an NVIDIA GPU of 6 GB free or more and a driver of 570 or newer.
 
