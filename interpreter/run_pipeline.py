@@ -13,21 +13,22 @@ plain python3. Without --kg the demo graph (interpreter/kg/demo.py) is used. Spe
 only through rate, pitch and volume; a better emotion TTS is still to be chosen.
 """
 import argparse
+import csv
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from interpreter.baseline import baseline_task2
 from interpreter.concepts import CONCEPTS, find_kupu, gloss
-from interpreter.contracts import LANGS
+from interpreter.contracts import EMOTIONS, LANGS, SpeechPlan
 from interpreter.emotion import CANONICAL_VA, MIN_CONFIDENCE, match_rule, refine_emotion
-from interpreter.contracts import EMOTIONS
+from interpreter.emotion_flow import SpeakerState, describe
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.graph import Graph
 from interpreter.kg.provider import KGContext
 from interpreter.mocks.mock_recogniser import load_frames
 from interpreter.mocks.stub_sign_generator import StubSignGenerator
 from interpreter.pipeline import Pipeline
-from interpreter.emotion_flow import SpeakerState, describe
 from interpreter.run_local import expressiveness_arg
 from interpreter.task1 import Task1Config, choose_words, plan_speech
 from interpreter.testset import DEFAULT_TESTSET, load_testset, make_row
@@ -157,6 +158,130 @@ class Recorder:
         self.received.append(plan)
 
 
+def emotion_source(frame) -> str:
+    if refine_emotion(frame) is not frame:
+        return "text rule"
+    return "recogniser (weak)" if frame.emotion.confidence < MIN_CONFIDENCE else "recogniser"
+
+
+# ---------------------------------------------------------------- one sentence at a time, and scoring
+NAV_PROMPT = "Enter/n = next, p = previous, r = replay, q = quit, or type an id: "
+
+
+def step_through(frames, run_one, play_wav, scorer=None) -> None:
+    """Run, play (and score) one frame at a time, letting the listener move around. Ends on q, Ctrl-D, Ctrl-C, or
+    Enter after the last frame. Revisiting a frame runs it again (and re-scores it if scoring)."""
+    ids = [f.frame_id for f in frames]
+    i = 0
+    try:
+        while True:
+            plan, wav = run_one(frames[i])
+            play_wav(wav)
+            if scorer and isinstance(plan, SpeechPlan):
+                scorer.ask(frames[i], plan, lambda: play_wav(wav))
+            while True:
+                cmd = input(f"[{i + 1}/{len(frames)}] {NAV_PROMPT}").strip()
+                if cmd.lower() in ("", "n"):
+                    if i + 1 == len(frames):
+                        return
+                    i += 1
+                    break
+                if cmd.lower() == "p":
+                    if i == 0:
+                        print("this is the first one")
+                        continue
+                    i -= 1
+                    break
+                if cmd.lower() == "r":
+                    play_wav(wav)
+                    continue
+                if cmd.lower() == "q":
+                    return
+                if cmd in ids:
+                    i = ids.index(cmd)
+                    break
+                print(f"not understood: {cmd!r}")
+    except (EOFError, KeyboardInterrupt):
+        print("\nstopped")
+
+
+# The marking scheme. "single" checks apply to one-clause sentences, "multi" to sentences with an emotion flow.
+CHECKS = [
+    ("words", "Words: what you heard matches the says: line exactly", "all"),
+    ("maori", "Māori words: none for an English listener; kept only where the KG says the listener knows them", "all"),
+    ("emotion", "Emotion: with your eyes closed you would name the intended emotion", "single"),
+    ("flow", "Flow: the change at each clause boundary is audible and goes the right way", "multi"),
+    ("natural", "Natural: sounds like a real person (not robotic, chipmunky, dragging or rushed)", "all"),
+    ("joins", "Joins: no clicks, odd gaps or volume jumps between clauses", "multi"),
+    ("not_overdone", "Not overdone: the emotion is not cartoonish or exaggerated", "all"),
+]
+DEFAULT_SCORES = HERE / "listening_results" / "scores.csv"
+ANSWERS = {"y": "yes", "n": "no", "s": "skipped"}
+
+
+class Scorer:
+    """Asks the marking-scheme questions after a sentence plays and keeps the answers in a CSV (rewritten after
+    every sentence, so nothing is lost if you stop early). With the default path a new timestamped file is used."""
+
+    FIELDS = ["timestamp", "id", "voice", "listener", "says", *[k for k, _, _ in CHECKS], "verdict", "comment"]
+
+    def __init__(self, path: Path, voice: str) -> None:
+        if path == DEFAULT_SCORES:
+            path = path.with_name(f"scores-{voice.replace(' ', '-')}-{datetime.now():%Y%m%d-%H%M%S}.csv")
+        self.path, self.voice = path, voice
+        self.rows = {}
+
+    def ask(self, frame, plan, replay) -> str:
+        multi = len(plan.segments) > 1
+        print("SCORE    y = yes, n = no, s = skip, r = replay the audio")
+        answers = {}
+        for key, question, applies in CHECKS:
+            if (applies == "single" and multi) or (applies == "multi" and not multi):
+                answers[key] = "n/a"
+                continue
+            while True:
+                a = input(f"  {question}? ").strip().lower()
+                if a == "r":
+                    replay()
+                elif a in ANSWERS:
+                    answers[key] = ANSWERS[a]
+                    break
+                else:
+                    print("  y, n, s or r")
+        comment = input("  comment (Enter for none): ").strip()
+        given = [v for v in answers.values() if v != "n/a"]
+        verdict = "no" if "no" in given else ("incomplete" if "skipped" in given else "yes")
+        self.rows[frame.frame_id] = {"timestamp": datetime.now().isoformat(timespec="seconds"), "id": frame.frame_id,
+                                     "voice": self.voice, "listener": frame.addressee_id, "says": plan.utterance,
+                                     **answers, "verdict": verdict, "comment": comment}
+        self.save()
+        print(f"  -> {verdict} (saved to {self.path})")
+        return verdict
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=self.FIELDS)
+            w.writeheader()
+            w.writerows(self.rows.values())
+
+    def report(self) -> None:
+        if not self.rows:
+            print("\nSCORES: nothing scored")
+            return
+        rows = list(self.rows.values())
+        passed = sum(r["verdict"] == "yes" for r in rows)
+        print(f"\nSCORES ({self.voice}): {passed}/{len(rows)} sentences passed every check")
+        for key, question, _ in CHECKS:
+            answered = [r[key] for r in rows if r[key] in ("yes", "no")]
+            if answered:
+                print(f"  {question.split(':')[0]:<14}{answered.count('yes')}/{len(answered)} yes")
+        failed = [r["id"] for r in rows if r["verdict"] == "no"]
+        if failed:
+            print(f"  failed: {', '.join(failed)}")
+        print(f"  saved to {self.path}")
+
+
 def build_pipeline(graph: Graph, speech_sink, sign_sink, cfg: Task1Config, target_lang=None,
                    trace: Tracer = Tracer(False), state: Optional[SpeakerState] = None) -> Pipeline:
     """state: a SpeakerState to carry each speaker's emotion from one sentence to the next (None = off)."""
@@ -185,11 +310,22 @@ def main(argv=None) -> None:
     ap.add_argument("--voice", help="a Kokoro voice for every sentence, e.g. af_heart, af_bella, bf_emma, bf_isabella")
     ap.add_argument("--carry", action="store_true",
                     help="carry each speaker's emotion from one sentence to the next (off: every sentence starts fresh)")
+    ap.add_argument("--step", action="store_true",
+                    help="one sentence at a time: plays it, then Enter/n = next, p = previous, r = replay, q = quit, "
+                         "or type an id to jump")
+    ap.add_argument("--score", nargs="?", const=str(DEFAULT_SCORES), metavar="CSV",
+                    help="like --step, and asks the marking-scheme questions after each sentence; answers are saved "
+                         "to a CSV (default: a new file in interpreter/listening_results/)")
     ap.add_argument("--dry-run", action="store_true", help="print the stages only; no TTS")
     ap.add_argument("--quiet", action="store_true", help="one line in, one line out per frame")
     args = ap.parse_args(argv)
 
     verbose = not args.quiet
+    if args.dry_run:
+        def play(_):
+            pass
+    else:
+        from interpreter.local_tts.playback import play
     trace = Tracer(verbose)
     graph = Graph.load(args.kg) if args.kg else demo_graph()
     if args.dry_run:
@@ -201,7 +337,6 @@ def main(argv=None) -> None:
             from interpreter.local_tts.kokoro_engine import KokoroEngine
             engine = KokoroEngine(args.voice)
         sink = LocalSpeechSink(args.out, engine=engine, tts=args.tts)
-        from interpreter.local_tts.playback import play
     cfg = Task1Config(expressiveness=args.expressiveness)
     sign_sink = StubSignGenerator()
     pipe = build_pipeline(graph, sink, sign_sink, cfg, args.target_lang, trace, SpeakerState() if args.carry else None)
@@ -226,43 +361,60 @@ def main(argv=None) -> None:
 
     if verbose:
         describe_graph(graph)
-    spoken = signed = 0
-    summary = []
-    for frame in frames:
+    voice = "dry-run" if args.dry_run else sink.voice_name(args.target_lang or frames[0].target_lang)
+    results = {}                                  # frame id -> (frame, plan, wav path or None), in visiting order
+
+    def run_one(frame):
         to_speech = frame.direction in ("sign_to_speech", "text_to_speech")
         print(f"\n===== {frame.frame_id}  {frame.direction}  ->  {'Task 1 (speech)' if to_speech else 'Task 2 (sign)'} =====")
         if frame.frame_id in notes and verbose:
             print(f"listen for: {notes[frame.frame_id]}")
-        plan = pipe.process(frame)
+        plan, wav = pipe.process(frame), None
         if to_speech:
-            spoken += 1
             if args.dry_run:
                 trace.stage(5, 5, "SPEECH", "dry run: no audio rendered")
             else:
                 r = sink.results[-1]
+                wav = r.path
                 parts = r.params.get("segments") or [{**r.params, "duration_s": r.duration_s}]
                 trace.stage(5, 5, "SPEECH", f"{sink.voice_name(plan.voice.language)} ({plan.voice.language}), "
                             f"{r.duration_s:.2f} s of audio",
                             *(f"clause {k}: rate {x['rate']:.2f} pitch {x['pitch']:.2f} volume {x['volume']:.2f}, "
                               f"{x['duration_s']:.2f} s" for k, x in enumerate(parts, start=1)),
                             *(f"note: {n}" for n in r.notes), f"file: {r.path}")
-                if args.play:
-                    trace.stage(5, 5, "SPEECH", "playing...")
-                    play(r.path)
-            weak = frame.emotion.confidence < MIN_CONFIDENCE
-            source = "text rule" if refine_emotion(frame) is not frame else ("recogniser (weak)" if weak else "recogniser")
-            summary.append((frame.frame_id, frame.addressee_id, f"{plan.emotion_label} ({source})", plan.utterance))
             if not verbose:
                 print(f'  in : "{frame.text}"\n  out: "{plan.utterance}"')
+        results[frame.frame_id] = (frame, plan, wav)
+        return plan, wav
+
+    def play_wav(wav):
+        if wav:
+            trace.stage(5, 5, "SPEECH", "playing...")
+            play(wav)
         else:
-            signed += 1
+            print("(no audio: dry run or a sign frame)")
+
+    scorer = Scorer(Path(args.score), voice) if args.score else None
+    if args.step or scorer:
+        step_through(frames, run_one, play_wav, scorer)
+    else:
+        for frame in frames:
+            _, wav = run_one(frame)
+            if args.play and wav:
+                play_wav(wav)
+
+    summary = [(f.frame_id, f.addressee_id, f"{p.emotion_label} ({emotion_source(f)})", p.utterance)
+               for f, p, _ in results.values() if isinstance(p, SpeechPlan)]
     if summary:
         print("\nSUMMARY")
         print(f"  {'id':<7}{'listener':<19}{'emotion (source)':<30}says")
         for row in summary:
             print(f"  {row[0]:<7}{row[1]:<19}{row[2]:<30}{row[3]}")
-    print(f"\ndone: {spoken} speech plan(s), {signed} sign plan(s)" + ("" if args.dry_run else f"; WAVs in {args.out}"))
-
+    if scorer:
+        scorer.report()
+    spoken = len(summary)
+    print(f"\ndone: {spoken} speech plan(s), {len(results) - spoken} sign plan(s)"
+          + ("" if args.dry_run else f"; WAVs in {args.out}"))
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,5 @@
 import contextlib
+import csv
 import io
 import json
 import tempfile
@@ -7,6 +8,7 @@ import wave
 from array import array
 from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 from interpreter.context import StaticContext
 from interpreter.contracts import (Emotion, EmotionSpan, InterpretationFrame, Prosody, SpeechPlan, SpeechSegment)
@@ -279,6 +281,57 @@ class TestRendering(unittest.TestCase):
                 w.setframerate(8000)
                 w.writeframes(array("h", [5] * 8000).tobytes())
             self.assertAlmostEqual(join_wavs([p], Path(d) / "j.wav"), 1.0)
+
+
+def run_interactive(answers, *argv):
+    """Run the CLI with scripted keyboard input (then end-of-input, like Ctrl-D); returns (stdout plus every prompt
+    shown, frame ids in the order they were run)."""
+    buf = io.StringIO()
+    with mock.patch("builtins.input", side_effect=[*answers, EOFError()]) as fake, contextlib.redirect_stdout(buf):
+        pipeline_main(["--dry-run", "--testset", str(temp_csv(CSV)), *argv])
+    out = buf.getvalue() + "\n".join(c.args[0] for c in fake.call_args_list)
+    return out, [line.split()[1] for line in buf.getvalue().splitlines() if line.startswith("===== ")]
+
+
+class TestStepAndScore(unittest.TestCase):
+    def test_step_next_previous_replay_jump_quit(self):
+        out, visited = run_interactive(["", "p", "r", "a5", "q"], "--step", "--only", "a1,a2,a5")
+        self.assertEqual(visited, ["a1", "a2", "a1", "a5"])
+        self.assertIn("[1/3] Enter/n = next", out)
+
+    def test_previous_on_first_and_unknown_command(self):
+        out, visited = run_interactive(["p", "zzz", "n", "n"], "--step", "--only", "a1,a2")
+        self.assertEqual(visited, ["a1", "a2"])                 # Enter/n after the last one ends the run
+        self.assertIn("this is the first one", out)
+        self.assertIn("not understood: 'zzz'", out)
+
+    def test_end_of_input_stops_cleanly(self):
+        out, visited = run_interactive([], "--step", "--only", "a1,a2")
+        self.assertEqual(visited, ["a1"])
+        self.assertIn("stopped", out)
+
+    def test_score_single_and_flow_sentences(self):
+        path = Path(tempfile.mkdtemp()) / "scores.csv"
+        single = ["y", "y", "y", "n", "y", "too slow"]            # words, maori, emotion, natural, not overdone, comment
+        flow_answers = ["y", "r", "y", "y", "y", "s", "y", ""]     # words, (replay) maori, flow, natural, joins skipped, ...
+        out, visited = run_interactive(single + [""] + flow_answers + ["q"],
+                                       "--score", str(path), "--only", "a4,a6")
+        self.assertEqual(visited, ["a4", "a6"])
+        rows = {r["id"]: r for r in csv.DictReader(open(path, encoding="utf-8"))}
+        self.assertEqual((rows["a4"]["emotion"], rows["a4"]["flow"], rows["a4"]["joins"]), ("yes", "n/a", "n/a"))
+        self.assertEqual((rows["a4"]["natural"], rows["a4"]["verdict"], rows["a4"]["comment"]), ("no", "no", "too slow"))
+        self.assertEqual((rows["a6"]["emotion"], rows["a6"]["flow"], rows["a6"]["joins"]), ("n/a", "yes", "skipped"))
+        self.assertEqual(rows["a6"]["verdict"], "incomplete")
+        self.assertIn("SCORES (dry-run): 0/2 sentences passed every check", out)
+        self.assertIn("failed: a4", out)
+
+    def test_rescoring_a_sentence_replaces_its_answers(self):
+        path = Path(tempfile.mkdtemp()) / "scores.csv"
+        no = ["n", "y", "y", "y", "y", ""]
+        yes = ["y", "y", "y", "y", "y", ""]
+        run_interactive(no + ["a1"] + yes + ["q"], "--score", str(path), "--only", "a1")
+        rows = list(csv.DictReader(open(path, encoding="utf-8")))
+        self.assertEqual([(r["id"], r["verdict"]) for r in rows], [("a1", "yes")])
 
 
 if __name__ == "__main__":

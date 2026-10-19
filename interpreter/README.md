@@ -113,6 +113,26 @@ interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --only f01 --
 interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --tts piper --play      # the old Piper voice
 ```
 
+**One at a time, and scoring.** `--step` plays one sentence, then waits: Enter or `n` = next, `p` = previous, `r` = replay, `q` = quit, or type an id (for example `f05`) to jump. `--score` does the same and, after each sentence, asks the marking-scheme questions that apply (answer `y`, `n` or `s` to skip; `r` replays). Answers are saved after every sentence to `interpreter/listening_results/scores-<voice>-<time>.csv` (git-ignored; `--score FILE` picks the file), and the run ends with the pass rate and the yes rate per check.
+
+```
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --step
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --score
+interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --score --tts piper     # score the old voice the same way
+```
+
+| Check | Yes means | Asked for |
+|---|---|---|
+| Words | what you heard matches the `says:` line exactly | every sentence |
+| Māori words | none for an English listener; kept only where the KG says the listener knows them | every sentence |
+| Emotion | with your eyes closed you would name the intended emotion | one-clause sentences |
+| Flow | the change at each clause boundary is audible and goes the right way | sentences with an emotion flow |
+| Natural | sounds like a real person (not robotic, chipmunky, dragging or rushed) | every sentence |
+| Joins | no clicks, odd gaps or volume jumps between clauses | sentences with an emotion flow |
+| Not overdone | the emotion is not cartoonish or exaggerated | every sentence |
+
+A sentence passes when every check asked is yes (any no fails it; a skip makes it incomplete).
+
 Each sentence prints its "listen for" note and the five stages, then plays. Stage 4 shows the **emotion flow**: the sentence split into clauses, each with its own emotion (from the recogniser's span, a text rule, or the sentence emotion), valence/arousal and delivery (rate, pitch, volume). Stage 5 shows the voice and what was applied to each clause. A summary table ends the run. `--carry` carries each speaker's emotion from one sentence to the next (off by default, so every test sentence starts fresh). Listeners in the demo graph: `person:aroha`, `person:rawiri` (tagged Māori: te reo kept), `person:staff_01` (knows whānau only), `person:visitor_01`, `person:visitor_02` (no te reo: kupu replaced with English).
 
 **Emotion flow** (`interpreter/emotion_flow.py`; contract schema 0.3: `InterpretationFrame.emotion_flow` spans in, `SpeechPlan.segments` out). Clauses break at `. ! ? ;`, before ", but" / ", so" / ", although" / ", and then", and where a recogniser span starts. Unmarked clauses keep 30% of the previous clause so the voice does not jump. Delivery is a smooth blend of the emotion profiles. The renderer speaks each clause with its own delivery and joins them with a 120 ms gap. To compare one emotion against the flow for the same sentence:
