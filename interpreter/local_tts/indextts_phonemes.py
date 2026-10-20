@@ -28,9 +28,9 @@ PHONEMES: Dict[str, str] = {
     "ck:kai": "K AY1",                                 # /ˈkai/ [ˈkɐi]
     "ck:mahi": "M AH1 . HH IY0",                       # no Wiktionary IPA; spelling rules: /ˈmahi/
     "ck:tamariki": "T AH1 . M AH0 . D IY0 . K IY0",    # /ˈtamariki/ [ˈtɐmɐɾiki]; D for the tapped r: Jay's pick
-    "ck:whare": "F AH1 . R EH0",                       # /ˈɸare/ [ˈfɐɾɛ]
+    "ck:whare": "F AH1 . D EH0",                       # /ˈɸare/ [ˈfɐɾɛ]; D for the tapped r: Jay's pick (2026-10-20)
     "ck:korero": "K AO1 . R EH0 . R AO0",              # /ˈkoːrero/ [ˈkoːɾɛɾɔ]
-    "ck:koha": "K AO1 . HH AH0",                       # no Wiktionary IPA; spelling rules: /ˈkoha/
+    "ck:koha": "K OW1 . HH AH0",                       # no Wiktionary IPA; spelling rules: /ˈkoha/; "ow" vowel: Jay's pick (2026-10-20)
 }
 
 # Extra candidates for auditioning (the current PHONEMES entry is always candidate 1). The first draft used the long
@@ -41,13 +41,13 @@ CANDIDATES: Dict[str, List[str]] = {
     "ck:tamariki": ["T AA1 . M AA0 . R IY0 . K IY0", "T AH1 . M AH0 . R IY0 . K IY0"],
     "ck:kia-ora": ["K IY1 . AA0 . AO1 . R AA0", "K IY1 . AH0 . AO1 . D AH0"],
     "ck:mahi": ["M AA1 . HH IY0"],
-    # koha: Jay heard the current hint as "koka" (2026-10-20). Alternatives: the old AA ending, a different o, no syllable dot,
-    # and a stressed ending.
-    "ck:koha": ["K AO1 . HH AA0", "K OW1 . HH AH0", "K AO1 HH AH0", "K AO1 . HH AH1"],
+    # koha: Jay heard the earlier hint (K AO1 . HH AH0) as "koka" and picked the OW vowel on 2026-10-20; the others stay for comparison.
+    "ck:koha": ["K AO1 . HH AH0", "K AO1 . HH AA0", "K AO1 HH AH0", "K AO1 . HH AH1"],
 }
 # whare: wrong in every version so far, with or without a hint (2026-10-19 and 20). If the "f" sound for wh is what sounds
 # wrong, a "w" start may sound closer to a listener who hears wh as "w"; plus "fo" and the tapped-r stand-in D.
-CANDIDATES["ck:whare"] = ["F AA1 . R EH0", "F AH1 . D EH0", "W AA1 . R EH0", "W AH1 . D EH0", "F AO1 . R EH0"]
+# Jay picked F AH1 . D EH0 on 2026-10-20; the earlier hints stay for comparison.
+CANDIDATES["ck:whare"] = ["F AH1 . R EH0", "F AA1 . R EH0", "W AA1 . R EH0", "W AH1 . D EH0", "F AO1 . R EH0"]
 CHANGED = ("whare", "tamariki", "kia ora", "mahi", "koha")   # the hints that changed from the first draft
 # Jay's audition (2026-10-19): tamariki = the D version (now current); whare and kia ora sounded wrong in every version,
 # including no hint; mahi and koha unclear. IndexTTS cannot say these well; a te reo voice is needed (see README).

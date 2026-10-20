@@ -235,6 +235,7 @@ class TestKupuHints(unittest.TestCase):
     def test_short_a_is_ah_long_a_is_aa(self):
         self.assertIn("AA", PHONEMES["ck:whanau"])                   # whā-: long
         self.assertTrue(PHONEMES["ck:whare"].startswith("F AH1"))   # wha-: short
+        self.assertEqual((PHONEMES["ck:whare"], PHONEMES["ck:koha"]), ("F AH1 . D EH0", "K OW1 . HH AH0"))   # Jay's picks
         self.assertNotIn("AA", PHONEMES["ck:tamariki"])
 
     def test_audition_candidates(self):
@@ -242,7 +243,7 @@ class TestKupuHints(unittest.TestCase):
         self.assertEqual(cands[0], ("no hint (IndexTTS guesses)", None))
         self.assertEqual(cands[1][1], PHONEMES["ck:whare"])
         self.assertTrue(cands[1][0].endswith("<- current"))
-        self.assertEqual(candidates_for("ck:whare", ["F AH1 . D EH0"])[1:], [("F AH1 . D EH0", "F AH1 . D EH0")])
+        self.assertEqual(candidates_for("ck:whare", ["W AA1 . R EH0"])[1:], [("W AA1 . R EH0", "W AA1 . R EH0")])
         self.assertEqual(len(CHANGED), 5)
 
     def test_annotate(self):
