@@ -14,7 +14,13 @@ from interpreter.local_tts.engines import engine_for
 from interpreter.tts.base import lexicon_spans, pause_map, split_punct, tokens
 
 PITCH_RANGE = (0.8, 1.25)
-GAP_MS = 120          # silence between clauses when a plan with segments is joined into one WAV
+GAP_MS = 120          # silence between clauses when a plan with segments is joined into one WAV (after a comma or anything else)
+GAP_AFTER = {"?": 450, ".": 300, "!": 300}      # a sentence end gets a longer pause than a comma (Jay: f07 wanted one)
+
+
+def gap_after(text: str) -> int:
+    """Milliseconds of silence to leave after a clause, by how it ends."""
+    return GAP_AFTER.get(text.rstrip()[-1:], GAP_MS)
 GAIN_RANGE = (0.25, 1.5)
 INT16_MAX = 32767
 
@@ -68,7 +74,8 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
     plan.voice.language (engine_for); an explicit engine wins.
 
     A plan with segments (the emotion flow) is rendered one clause at a time, each with its own prosody, and the
-    clauses are joined with GAP_MS of silence (see _render_one for how one clause is rendered). The result's params
+    clauses are joined with silence that depends on how the clause ends (gap_after: longer after ? . !), see _render_one for
+    how one clause is rendered. The result's params
     are the first clause's, plus params["segments"] with every clause's params and duration.
 
     An engine with `emotional = True` (IndexTTS) is given each clause's emotion instead (_render_emotional): it does
@@ -79,24 +86,25 @@ def render_speech(plan: SpeechPlan, engine, out_path, cfg: Optional[RenderConfig
         engine = engine_for(plan.voice.language)
     emotional = getattr(engine, "emotional", False)
     if emotional:
-        from interpreter.local_tts.indextts_emotion import FLOW_STRENGTH
-        flow_scale = FLOW_STRENGTH if len({s.emotion_label for s in plan.segments}) > 1 else 1.0
+        from interpreter.local_tts.indextts_emotion import transition_scale
     if not plan.segments:
         if emotional:
             v, a = CANONICAL_VA[plan.emotion_label]
             return _render_emotional(plan.utterance, v, a, plan.prosody.volume, engine, out_path, cfg)
         return _render_one(plan, engine, out_path, cfg)
     with tempfile.TemporaryDirectory() as d:
-        parts = []
+        parts, previous = [], None
         for k, seg in enumerate(plan.segments):
             path = Path(d) / f"{k}.wav"
             if emotional:
+                point = (seg.valence, seg.arousal)
                 parts.append(_render_emotional(seg.text, seg.valence, seg.arousal, seg.prosody.volume, engine, path, cfg,
-                                               flow_scale))
+                                               transition_scale(previous, point)))
+                previous = point
                 continue
             part = replace(plan, utterance=seg.text, emotion_label=seg.emotion_label, prosody=seg.prosody, segments=[])
             parts.append(_render_one(part, engine, path, cfg))
-        duration = join_wavs([r.path for r in parts], out_path)
+        duration = join_wavs([r.path for r in parts], out_path, [gap_after(seg.text) for seg in plan.segments[:-1]])
     params = {**parts[0].params, "segments": [{**r.params, "duration_s": r.duration_s} for r in parts]}
     notes = tuple(dict.fromkeys(n for r in parts for n in r.notes))
     with wave.open(str(out_path), "rb") as w:
@@ -119,8 +127,10 @@ def resample(samples: array, src: int, dst: int) -> array:
     return out
 
 
-def join_wavs(paths, out_path, gap_ms: int = GAP_MS) -> float:
-    """Concatenate mono 16-bit WAVs (any sample rates) with short silences between them; returns seconds."""
+def join_wavs(paths, out_path, gap_ms=GAP_MS) -> float:
+    """Concatenate mono 16-bit WAVs (any sample rates) with silences between them; returns seconds. `gap_ms` is one number
+    for every join or a list with one number per join."""
+    gaps = list(gap_ms) if isinstance(gap_ms, (list, tuple)) else [gap_ms] * (len(paths) - 1)
     loaded = []
     for p in paths:
         with wave.open(str(p), "rb") as w:
@@ -131,7 +141,7 @@ def join_wavs(paths, out_path, gap_ms: int = GAP_MS) -> float:
     joined = array("h")
     for k, (s, r) in enumerate(loaded):
         if k:
-            joined.extend(array("h", bytes(2 * round(gap_ms / 1000 * rate))))
+            joined.extend(array("h", bytes(2 * round(gaps[k - 1] / 1000 * rate))))
         joined.extend(resample(s, r, rate))
     with wave.open(str(out_path), "wb") as w:
         w.setnchannels(1)
@@ -187,7 +197,7 @@ def _render_emotional(text: str, valence: float, arousal: float, volume: float, 
     samples = trim_silence(samples, rate)     # IndexTTS pads each clause; joined clauses had awkward gaps
     _normalise_and_write(samples, rate, gain, out_path, cfg)
     params = {"rate": 1.0, "pitch": 1.0, "volume": gain, "emo_vector": vector, "emo_alpha": alpha,
-              "flow_softened": alpha_scale != 1.0, "sent_text": sent,
+              "alpha_scale": round(alpha_scale, 3), "sent_text": sent,
               "native_sample_rate": rate, "output_sample_rate": rate}
     return RenderResult(str(out_path), len(samples) / rate, rate, params, tuple(notes))
 

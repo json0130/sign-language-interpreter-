@@ -8,7 +8,8 @@ Alphas: neutral 0.5, sad 0.7, excited 0.5, angry 0.7 are Jay's picks from the ba
 exaggerated"). Jay found happy at 0.5 sounded neutral and surprised did not sound surprised, so those start higher (0.7
 and 0.8). The rest are untuned guesses. Starting values to tune by ear.
 """
-from typing import List, Tuple
+import math
+from typing import List, Optional, Tuple
 
 from interpreter.emotion import CANONICAL_VA
 
@@ -25,11 +26,23 @@ VECTORS = {
     "surprised": [0, 0, 0, 0, 0, 0, 0.8, 0],
     "confused": [0, 0, 0, 0.2, 0, 0.1, 0.4, 0],     # no confused slot: approximate
 }
-# In a sentence whose clauses carry different emotions, every clause's strength is multiplied by this: Jay found
-# sad/angry inside flows too exaggerated (f05, r05 on 2026-10-19). Single-emotion sentences keep the ALPHAS.
-FLOW_STRENGTH = 0.8
-ALPHAS = {"neutral": 0.5, "sad": 0.7, "excited": 0.5, "angry": 0.7,
-          "happy": 0.7, "surprised": 0.8, "calm": 0.5, "apologetic": 0.5, "anxious": 0.7, "confused": 0.5}
+# A clause that follows a DIFFERENT emotion is spoken less strongly than the same emotion on its own: "excited, then sad" has
+# a gentler sad than a standalone sad (Jay, 2026-10-20: f01 "sudden sad from excited", f05 "sad a bit too much"). The strength
+# is multiplied by 1 - TRANSITION_SOFTEN x (distance in valence/arousal from the previous clause), but never below
+# TRANSITION_FLOOR. The first clause, and a clause continuing the same emotion, keep their full per-emotion strength.
+TRANSITION_SOFTEN = 0.3
+TRANSITION_FLOOR = 0.5
+# Per-emotion strengths. 2026-10-20 retune after Jay scored the AI server: sad 0.7 -> 0.6 and surprised 0.8 -> 0.65 (a bit
+# too much), apologetic 0.5 -> 0.65 and anxious 0.7 -> 0.8 (sounded neutral). One listener, one score each: a first guess.
+ALPHAS = {"neutral": 0.5, "sad": 0.6, "excited": 0.5, "angry": 0.7,
+          "happy": 0.7, "surprised": 0.65, "calm": 0.5, "apologetic": 0.65, "anxious": 0.8, "confused": 0.5}
+
+
+def transition_scale(previous: Optional[Tuple[float, float]], current: Tuple[float, float]) -> float:
+    """Multiplier for a clause's strength, given the previous clause's (valence, arousal) or None for the first clause."""
+    if previous is None:
+        return 1.0
+    return max(TRANSITION_FLOOR, 1 - TRANSITION_SOFTEN * math.hypot(current[0] - previous[0], current[1] - previous[1]))
 
 
 def emotion_vector(valence: float, arousal: float) -> Tuple[List[float], float]:

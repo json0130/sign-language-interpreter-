@@ -262,7 +262,7 @@ class TestRendering(unittest.TestCase):
         self.assertEqual(len(seg), 2)
         self.assertNotEqual(seg[0]["output_sample_rate"], seg[1]["output_sample_rate"])   # pitch differs per clause
         self.assertEqual(rate, max(x["output_sample_rate"] for x in seg))
-        self.assertAlmostEqual(total, seg[0]["duration_s"] + seg[1]["duration_s"] + 0.12, delta=0.01)
+        self.assertAlmostEqual(total, seg[0]["duration_s"] + seg[1]["duration_s"] + 0.30, delta=0.01)   # "." ends clause 1: 300 ms
 
     def test_plan_without_segments_renders_as_one(self):
         p = replace(plan_speech(frame("Thanks so much. The results are in."), StaticContext()), segments=[])
@@ -271,6 +271,25 @@ class TestRendering(unittest.TestCase):
             res = render_speech(p, eng, Path(d) / "x.wav")
         self.assertEqual(len(eng.calls), 1)
         self.assertNotIn("segments", res.params)
+
+    def test_pause_length_depends_on_how_the_clause_ends(self):
+        from interpreter.local_tts.render import gap_after
+        self.assertEqual([gap_after(t) for t in ("Which room?", "Done.", "Wow!", "Well,", "and so", "Done. ")],
+                         [450, 300, 300, 120, 120, 300])
+
+    def test_join_wavs_accepts_one_gap_per_join(self):
+        with tempfile.TemporaryDirectory() as d:
+            paths = []
+            for i in range(3):
+                p = Path(d) / f"{i}.wav"
+                with wave.open(str(p), "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(8000)
+                    w.writeframes(array("h", [5] * 8000).tobytes())
+                paths.append(p)
+            self.assertAlmostEqual(join_wavs(paths, Path(d) / "a.wav", [100, 500]), 3.6)
+            self.assertAlmostEqual(join_wavs(paths, Path(d) / "b.wav", 200), 3.4)
 
     def test_join_wavs_single_file(self):
         with tempfile.TemporaryDirectory() as d:

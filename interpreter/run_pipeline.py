@@ -166,7 +166,7 @@ def clause_line(k: int, params: dict) -> str:
     if "emo_vector" in params:           # IndexTTS: the emotion itself, not our rate/pitch
         from interpreter.local_tts.indextts_emotion import describe as vector_text
         line = (f"clause {k}: IndexTTS emotion {vector_text(params['emo_vector'])} x strength {params['emo_alpha']:.2f}"
-                + (" (softened: the emotion changes in this sentence)" if params.get("flow_softened") else "")
+                + (f" (x{params['alpha_scale']:.2f}: follows a different emotion)" if params.get("alpha_scale", 1.0) < 1.0 else "")
                 + f", volume {params['volume']:.2f}, {params['duration_s']:.2f} s")
         if "<" in params.get("sent_text", ""):
             line += f"\n{INDENT}  sent to IndexTTS: {params['sent_text']}"

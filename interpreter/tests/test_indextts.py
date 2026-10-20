@@ -15,7 +15,9 @@ from interpreter.emotion import CANONICAL_VA
 from interpreter.emotion_flow import markers_to_spans
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
-from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, SLOTS, VECTORS, describe, emotion_vector
+from interpreter.emotion import CANONICAL_VA
+from interpreter.local_tts.indextts_emotion import (ALPHAS, SLOTS, TRANSITION_FLOOR, VECTORS, describe, emotion_vector,
+                                                    transition_scale)
 from interpreter.local_tts.indextts_phonemes import CANDIDATES, CHANGED, PHONEMES, annotate, candidates_for
 from interpreter.concepts import CONCEPTS
 from interpreter.local_tts.indextts_engine import IndexTTSEngine, gpu_users, start_failure_message
@@ -85,9 +87,10 @@ class TestEmotionVector(unittest.TestCase):
             vec, alpha = emotion_vector(v, a)
             self.assertEqual((vec, alpha), (VECTORS[label], ALPHAS[label]), label)
 
-    def test_jays_strengths(self):
-        self.assertEqual({k: ALPHAS[k] for k in ("neutral", "sad", "excited", "angry")},
-                         {"neutral": 0.5, "sad": 0.7, "excited": 0.5, "angry": 0.7})
+    def test_picked_strengths_that_were_not_retuned(self):
+        # Jay's picks from the bake-off; sad was retuned from 0.7 to 0.6 on 2026-10-20 (see test_retuned_strengths)
+        self.assertEqual({k: ALPHAS[k] for k in ("neutral", "excited", "angry")},
+                         {"neutral": 0.5, "excited": 0.5, "angry": 0.7})
 
     def test_between_emotions_mixes(self):
         vec, alpha = emotion_vector(0.0, 0.3)
@@ -160,6 +163,30 @@ class TestStartFailure(unittest.TestCase):
         with mock.patch("interpreter.local_tts.indextts_engine.subprocess.run", side_effect=FileNotFoundError):
             self.assertEqual(gpu_users(), [])
         self.assertIn("could not read nvidia-smi", start_failure_message(self.OOM, []))
+
+
+class TestTransitions(unittest.TestCase):
+    def test_first_clause_and_same_emotion_keep_full_strength(self):
+        self.assertEqual(transition_scale(None, CANONICAL_VA["sad"]), 1.0)
+        self.assertEqual(transition_scale(CANONICAL_VA["sad"], CANONICAL_VA["sad"]), 1.0)
+
+    def test_a_bigger_swing_is_softened_more_down_to_the_floor(self):
+        c = CANONICAL_VA
+        small = transition_scale(c["happy"], c["excited"])
+        medium = transition_scale(c["angry"], c["sad"])
+        big = transition_scale(c["excited"], c["sad"])
+        self.assertGreater(small, medium)
+        self.assertGreater(medium, big)
+        self.assertEqual(big, TRANSITION_FLOOR)                       # excited to sad hits the floor
+        self.assertTrue(all(TRANSITION_FLOOR <= transition_scale(a, b) <= 1 for a in c.values() for b in c.values()))
+
+    def test_sad_after_excited_is_less_than_a_normal_sad(self):
+        after = ALPHAS["sad"] * transition_scale(CANONICAL_VA["excited"], CANONICAL_VA["sad"])
+        self.assertLess(after, ALPHAS["sad"])
+
+    def test_retuned_strengths(self):
+        self.assertEqual({k: ALPHAS[k] for k in ("sad", "surprised", "apologetic", "anxious")},
+                         {"sad": 0.6, "surprised": 0.65, "apologetic": 0.65, "anxious": 0.8})
 
 
 class TestDefaultsAndTrim(unittest.TestCase):
@@ -262,13 +289,14 @@ class TestEngineAndRender(unittest.TestCase):
                 self.assertEqual(w.getframerate(), 22050)
         self.assertEqual([r["text"] for r in self.fake.requests], ["Hello everyone,", "but my nan could not come."])
         self.assertEqual([(r["emo_vector"], r["emo_alpha"]) for r in self.fake.requests],
-                         [(VECTORS["happy"], round(ALPHAS["happy"] * FLOW_STRENGTH, 3)),
-                          (VECTORS["sad"], round(ALPHAS["sad"] * FLOW_STRENGTH, 3))])   # softened: emotion changes
+                         [(VECTORS["happy"], ALPHAS["happy"]),                      # first clause: full strength
+                          (VECTORS["sad"], round(ALPHAS["sad"] * transition_scale(CANONICAL_VA["happy"], CANONICAL_VA["sad"]), 3))])
         seg = res.params["segments"]
         self.assertEqual([(s["rate"], s["pitch"]) for s in seg], [(1.0, 1.0), (1.0, 1.0)])   # no pitch trick
         # each clause's 0.2 s padding is trimmed to 40 ms: 2 words = 0.2 s of sound + 0.08 s
         self.assertAlmostEqual(seg[0]["duration_s"], 0.2 + 0.08, delta=0.01)
-        self.assertIn("IndexTTS emotion sad 0.80, melancholic 0.20 x strength 0.56 (softened", clause_line(2, seg[1]))
+        self.assertIn("IndexTTS emotion sad 0.80, melancholic 0.20 x strength 0.31 (x0.52: follows a different emotion)",
+                      clause_line(2, seg[1]))
 
     def test_single_emotion_sentence_keeps_full_strength(self):
         plan = plan_speech(frame_with("{sad}I miss them. I really do."), KGContext(demo_graph()))

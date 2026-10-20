@@ -41,12 +41,17 @@ CANDIDATES: Dict[str, List[str]] = {
     "ck:tamariki": ["T AA1 . M AA0 . R IY0 . K IY0", "T AH1 . M AH0 . R IY0 . K IY0"],
     "ck:kia-ora": ["K IY1 . AA0 . AO1 . R AA0", "K IY1 . AH0 . AO1 . D AH0"],
     "ck:mahi": ["M AA1 . HH IY0"],
-    "ck:koha": ["K AO1 . HH AA0"],
+    # koha: Jay heard the current hint as "koka" (2026-10-20). Alternatives: the old AA ending, a different o, no syllable dot,
+    # and a stressed ending.
+    "ck:koha": ["K AO1 . HH AA0", "K OW1 . HH AH0", "K AO1 HH AH0", "K AO1 . HH AH1"],
 }
+# whare: wrong in every version so far, with or without a hint (2026-10-19 and 20). If the "f" sound for wh is what sounds
+# wrong, a "w" start may sound closer to a listener who hears wh as "w"; plus "fo" and the tapped-r stand-in D.
+CANDIDATES["ck:whare"] = ["F AA1 . R EH0", "F AH1 . D EH0", "W AA1 . R EH0", "W AH1 . D EH0", "F AO1 . R EH0"]
 CHANGED = ("whare", "tamariki", "kia ora", "mahi", "koha")   # the hints that changed from the first draft
 # Jay's audition (2026-10-19): tamariki = the D version (now current); whare and kia ora sounded wrong in every version,
 # including no hint; mahi and koha unclear. IndexTTS cannot say these well; a te reo voice is needed (see README).
-SENTENCE = "The next word is {kupu}."
+SENTENCE = "We talked about the {kupu} today."      # the kupu mid-sentence, as in the pipeline, to hear any pauses around it
 
 
 def annotate(text: str) -> str:
@@ -59,10 +64,14 @@ def annotate(text: str) -> str:
 
 
 def candidates_for(slug: str, own=()) -> List[Tuple[str, Optional[str]]]:
-    """[(label, phonemes or None)]: no hint first, then the current hint, then the alternatives (or `own`)."""
+    """[(label, phonemes or None)]: no hint first, then the current hint, then the alternatives (or `own`), then the current
+    hint without its syllable dots (to hear whether the dots cause the pauses around a kupu)."""
     out = [("no hint (IndexTTS guesses)", None)]
     for ph in (own or [PHONEMES[slug], *CANDIDATES.get(slug, [])]):
         out.append((ph + ("   <- current" if ph == PHONEMES[slug] else ""), ph))
+    nodots = PHONEMES[slug].replace(" . ", " ")
+    if not own and nodots != PHONEMES[slug] and nodots not in [ph for _, ph in out]:
+        out.append((nodots + "   (current without dots)", nodots))
     return out
 
 
@@ -72,8 +81,9 @@ def main(argv=None) -> None:
     from pathlib import Path
 
     from interpreter.concepts import CONCEPTS, lookup_by_te_reo
+    from interpreter.local_tts import config
+    from interpreter.local_tts.engines import engine_for
     from interpreter.local_tts.indextts_emotion import ALPHAS, VECTORS
-    from interpreter.local_tts.indextts_engine import IndexTTSEngine
     from interpreter.local_tts.playback import play
     from interpreter.local_tts.render import RenderConfig, _normalise_and_write, trim_silence
 
@@ -83,7 +93,12 @@ def main(argv=None) -> None:
     ap.add_argument("--changed", action="store_true", help=f"audition every changed hint: {', '.join(CHANGED)}")
     ap.add_argument("--sentence", default=SENTENCE, help="carrier sentence with {kupu} where the word goes")
     ap.add_argument("--no-play", action="store_true", help="render only")
+    ap.add_argument("--ai-host", help="speak through the AI server at this address (default: the AI_HOST variable)")
+    ap.add_argument("--ai-port", type=int, help="AI server port (default: AI_PORT, else 7898)")
+    ap.add_argument("--local", action="store_true", help="use IndexTTS on this machine instead of the AI server")
     args = ap.parse_args(argv)
+    config.AI_SERVER_HOST = args.ai_host or config.AI_SERVER_HOST
+    config.AI_SERVER_PORT = args.ai_port or config.AI_SERVER_PORT
     if not (args.kupu or args.changed):
         ap.error("give a kupu or --changed")
 
@@ -91,7 +106,8 @@ def main(argv=None) -> None:
     slugs = [lookup_by_te_reo(w) for w in words]
     if None in slugs:
         raise SystemExit(f"not in the concept table; known: {', '.join(e.te_reo for e in CONCEPTS.values())}")
-    engine = IndexTTSEngine()
+    engine = engine_for("en-NZ", "indextts" if args.local or not config.AI_SERVER_HOST else "aiserver")
+    print(f"speaking through: {type(engine).__name__}" + (f" at {engine.address}" if hasattr(engine, "address") else ""))
     out = Path(__file__).resolve().parent.parent / "audio_out" / "kupu"
     out.mkdir(parents=True, exist_ok=True)
     for slug in slugs:

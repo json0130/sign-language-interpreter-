@@ -19,7 +19,8 @@ from interpreter.emotion_flow import markers_to_spans
 from interpreter.kg.demo import demo_graph
 from interpreter.kg.provider import KGContext
 from interpreter.local_tts import config, engines
-from interpreter.local_tts.indextts_emotion import ALPHAS, FLOW_STRENGTH, VECTORS
+from interpreter.emotion import CANONICAL_VA
+from interpreter.local_tts.indextts_emotion import ALPHAS, VECTORS, transition_scale
 from interpreter.local_tts.indextts_phonemes import PHONEMES
 from interpreter.local_tts.indextts_server import orchestrator_reply, serve_orchestrator, wav_bytes
 from interpreter.local_tts.render import render_speech
@@ -206,8 +207,8 @@ class TestRendering(AIServerCase):
                          [f"<Kia ora|{PHONEMES['ck:kia-ora']}>, my <whānau|{PHONEMES['ck:whanau']}> are here,",
                           "but my nan could not come."])
         self.assertEqual([(c["vector"], c["alpha"]) for c in clauses],
-                         [(VECTORS["happy"], round(ALPHAS["happy"] * FLOW_STRENGTH, 3)),
-                          (VECTORS["sad"], round(ALPHAS["sad"] * FLOW_STRENGTH, 3))])
+                         [(VECTORS["happy"], ALPHAS["happy"]),                       # first clause: full strength
+                          (VECTORS["sad"], round(ALPHAS["sad"] * transition_scale(CANONICAL_VA["happy"], CANONICAL_VA["sad"]), 3))])
 
     def test_no_hints_when_the_server_is_not_indextts(self):
         server = other_engine_server("kokoro")
