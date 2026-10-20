@@ -12,7 +12,7 @@ from array import array
 from pathlib import Path
 from unittest import mock
 
-from interpreter.ai_server import client
+from interpreter.ai_server import check, client
 from interpreter.ai_server.tts_engine import NEUTRAL, AIServerTTSEngine
 from interpreter.contracts import Emotion, InterpretationFrame
 from interpreter.emotion_flow import markers_to_spans
@@ -55,14 +55,17 @@ class Orchestrator:
         self.server.server_close()
 
 
-def other_engine_server(engine_name=None):
-    """A server whose TTS is NOT IndexTTS: answers every TTS request with a tone and (optionally) another engine name."""
+def other_engine_server(engine_name=None, echo=False):
+    """A server that ignores the emotion fields: answers every TTS request, valid or not, with a tone. It names another
+    engine, or (echo=True) echoes the request parameters back the way the AI server's orchestrator did on 2026-10-20."""
     class Handler(socketserver.BaseRequestHandler):
         def handle(self):
             req = client.receive_json(self.request)
             params = {"format": "wav", "sample_rate": 24000, "channels": 1, "dtype": "int16"}
             if engine_name:
                 params["engine"] = engine_name
+            if echo:
+                params.update(req["parameters"])
             tone = array("h", (round(6000 * math.sin(i / 10)) for i in range(4800))).tobytes()
             client.send_json(self.request, {"robot_id": req["robot_id"], "request_id": req["request_id"], "command": [],
                                             "parameters": params,
@@ -145,25 +148,27 @@ class TestProtocol(AIServerCase):
 
 
 class TestEngine(AIServerCase):
-    def test_probe_confirms_indextts(self):
+    def test_probe_passes_a_server_that_refuses_an_invalid_emotion_setting(self):
         orch = self.serve()
         eng = AIServerTTSEngine()
-        self.assertEqual((eng.server_engine, eng.accepts_phoneme_hints, eng.native_sample_rate, eng.emotional),
-                         ("indextts", True, 22050, True))
+        self.assertEqual((eng.emotion_supported, eng.accepts_phoneme_hints, eng.native_sample_rate, eng.emotional),
+                         (True, True, 22050, True))
+        self.assertEqual(len(orch.synth.calls), 1)                      # the invalid probe was refused before any synthesis
         self.assertEqual(orch.synth.calls[0]["text"], "Hello.")
         self.assertEqual((orch.synth.calls[0]["vector"], orch.synth.calls[0]["alpha"]), NEUTRAL)
         self.assertEqual(eng.address, f"127.0.0.1:{orch.port}")
 
-    def test_a_server_that_is_not_indextts_gets_a_warning_and_no_hints(self):
-        for name in (None, "kokoro"):
-            server = other_engine_server(name)
+    def test_a_server_that_ignores_emotion_gets_a_warning_and_no_hints(self):
+        for name, echo in ((None, False), ("kokoro", False), ("indextts", True)):   # the last one echoes "indextts" back
+            server = other_engine_server(name, echo)
             self.addCleanup(stop, server)
             err = io.StringIO()
             with contextlib.redirect_stderr(err):
                 eng = AIServerTTSEngine("127.0.0.1", server.server_address[1])
+            self.assertFalse(eng.emotion_supported, (name, echo))
             self.assertFalse(eng.accepts_phoneme_hints)
-            self.assertIn("not IndexTTS", err.getvalue())
-            self.assertIn(name or "its default voice", err.getvalue())
+            self.assertIn("accepted an invalid emotion setting", err.getvalue())
+            self.assertIn("NO emotion", err.getvalue())
 
     def test_no_address_and_unreachable(self):
         config.AI_SERVER_HOST = ""
@@ -217,6 +222,60 @@ class TestRendering(AIServerCase):
         self.assertEqual(seen, ["My whānau are here."])                 # no <word|phonemes> to be read aloud
 
 
+class SlowWhenSad(FakeSynth):
+    """A synth that really uses the emotion: a sad vector makes the clip 1.5 times longer."""
+
+    def __call__(self, text, vector, alpha, lang="EN"):
+        sr, pcm = super().__call__(text, vector, alpha, lang)
+        return (sr, pcm + pcm[:len(pcm) // 2 // 2 * 2]) if vector[2] >= 0.5 else (sr, pcm)
+
+
+class TestConformanceCheck(AIServerCase):
+    def run_check(self, host, port):
+        lines = []
+        results = check.run_checks(host, port, reps=2, say=lines.append)
+        return dict(results), "\n".join(lines)
+
+    def test_a_server_that_uses_emotion_passes_every_check(self):
+        orch = Orchestrator(SlowWhenSad())
+        self.addCleanup(orch.close)
+        results, text = self.run_check("127.0.0.1", orch.port)
+        self.assertTrue(all(results.values()), text)
+        self.assertEqual(len(results), 5)
+        self.assertIn("identical audio", text)                  # the fake is deterministic
+
+    def test_a_server_that_validates_but_ignores_emotion_fails_only_the_sound_check(self):
+        orch = Orchestrator(FakeSynth())
+        self.addCleanup(orch.close)
+        results, _ = self.run_check("127.0.0.1", orch.port)
+        failed = [name for name, ok in results.items() if not ok]
+        self.assertEqual(len(failed), 1)
+        self.assertIn("emotion changes the sound", failed[0])
+
+    def test_a_server_that_echoes_the_parameters_fails_the_refusal_and_sound_checks(self):
+        server = other_engine_server("indextts", echo=True)
+        self.addCleanup(stop, server)
+        results, text = self.run_check("127.0.0.1", server.server_address[1])
+        self.assertTrue(results["answers a TTS request"])
+        self.assertEqual(sum(1 for name, ok in results.items() if not ok and name.startswith("refuses")), 3)
+        self.assertFalse(all(results.values()))
+        self.assertIn("it is not reading the field", text)
+
+    def test_unreachable_server_stops_after_the_first_check(self):
+        results, _ = self.run_check("127.0.0.1", 9)
+        self.assertEqual(list(results.values()), [False])
+
+    def test_exit_status(self):
+        orch = Orchestrator(SlowWhenSad())
+        self.addCleanup(orch.close)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(check.main(["--host", "127.0.0.1", "--port", str(orch.port), "--reps", "1"]), 0)
+        self.assertIn("ALL CHECKS PASSED", out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(check.main(["--host", "127.0.0.1", "--port", "9"]), 1)
+        self.assertIn("NOT READY", out.getvalue())
+
+
 class TestCommandLine(AIServerCase):
     def test_pipeline_speaks_through_the_ai_server(self):
         orch = Orchestrator()
@@ -226,7 +285,7 @@ class TestCommandLine(AIServerCase):
             pipeline_main(["--testset", str(temp_csv(CSV)), "--only", "a2,a6", "--out", tempfile.mkdtemp(),
                            "--ai-host", "127.0.0.1", "--ai-port", str(orch.port)])
         out = buf.getvalue()
-        self.assertIn(f"AI server 127.0.0.1:{orch.port} (indextts)", out)
+        self.assertIn(f"AI server 127.0.0.1:{orch.port} (emotion settings read)", out)
         texts = [c["text"] for c in orch.synth.calls]
         self.assertIn(f"My <whānau|{PHONEMES['ck:whanau']}> is coming to the <hui|{PHONEMES['ck:hui']}> tomorrow.", texts)
         self.assertIn("Hello,", texts)
