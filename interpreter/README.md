@@ -211,6 +211,23 @@ Set the install folder first if your home disk is small (`export INDEXTTS_DIR=/b
 
 **Pauses between clauses** depend on how the clause ends: 450 ms after "?", 300 ms after "." and "!", 120 ms otherwise (`GAP_AFTER` in `render.py`). Pauses *inside* a clause come from IndexTTS itself and cannot be set from here.
 
+## Live demo (speak into the microphone)
+
+```
+export AI_HOST=172.24.47.255 AI_PORT=8791          # text-to-speech (IndexTTS); speech-to-text is on AI_STT_PORT, default 7898
+interpreter/.venv/bin/python -m interpreter.run_live --mic Verbatim                    # webcam microphone
+interpreter/.venv/bin/python -m interpreter.run_live --mic C-Media --listener person:aroha
+```
+
+`microphone -> speech-to-text (AI server) -> emotion -> KG word choice for the listener -> one emotion per clause -> IndexTTS on the AI server -> speaker`. At start-up it connects to the server (and checks the server really uses the emotion settings), then measures the room's background noise for a second ("stay quiet") to set the speech level, because microphones differ a lot (this machine's webcam reads about 650 to 860 at rest, the USB microphone about 1). Then:
+
+- **Press Enter and speak.** It stops by itself after about a second of silence (`--push` = press Enter to stop instead). It prints what it heard, the same stage-by-stage trace as `run_pipeline` (`--quiet` skips it), the time each step took, and plays the result.
+- **Or type a sentence** to use it instead of the microphone (handy for trying wordings, or if the microphone is not working).
+- **Commands:** `/listener person:aroha` (who hears it; Aroha and Rawiri know te reo, so "family" and "meeting" come out as whānau and hui), `/emotion sad|auto` (force one, or let the words decide), `/again`, `/level` (test the microphone for 3 seconds), `/who` (the KG), `/help`, `/quit`.
+- One-off runs without the prompt: `--text "..."`, or `--wav file.wav` (16 kHz mono) to include the speech-to-text step. `--no-play` makes the speech without playing it; `--out-device NAME` picks the speaker.
+
+Notes: the speaker stands in for the signer, so with no sign recogniser connected the emotion comes from the words (the text rules), unless forced; English words with a kupu (family, meeting, food, gift, hello...) are tagged automatically so a te reo listener hears the kupu, using a plain word match ("it does not work" is tagged as mahi too). A turn takes roughly 5 s per clause, so a long sentence takes a while. The speech-to-text may not recognise te reo words. Port notes (2026-10-20): STT answered on 7898 while 8791 served only TTS; set `--stt-port` or `AI_STT_PORT` if that changes.
+
 ## Pepper test bench
 
 `interpreter/robot/` plays Task 1 output on a real Pepper (NAOqi) and runs a listening test. Needs the optional `qi` bindings for a real robot (`pip install qi`, or the Aldebaran Python 2.7 SDK); `--dry-run` needs nothing.
@@ -240,4 +257,4 @@ Privacy and ethics:
 
 Progress and next steps: [docs/PROGRESS.md](../docs/PROGRESS.md)
 
-Status: transition-based emotion softening, retuned strengths and sentence-end pauses added (AI server, port 8791); awaiting re-score of f01, f05, f07, e03, g03, g05 and the koha/whare audition.
+Status: live demo added (microphone to spoken interpretation with emotion); tested on the real server with a synthesized recording, not yet with a live voice.

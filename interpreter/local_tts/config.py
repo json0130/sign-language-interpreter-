@@ -14,6 +14,10 @@ TTS_ENGINES = ("aiserver", "indextts", "kokoro", "piper")
 # interpreter/ai_server/), where IndexTTS runs. The address comes from AI_HOST and AI_PORT as in that repo.
 AI_SERVER_HOST = os.environ.get("AI_HOST", "")
 AI_SERVER_PORT = int(os.environ.get("AI_PORT", "7898"))
+# Speech-to-text (the live demo) may be a different orchestrator instance from the text-to-speech one: on 2026-10-20 STT answered
+# on 7898 while 8791 served only TTS. Defaults: the same host, port 7898.
+AI_STT_HOST = os.environ.get("AI_STT_HOST", "")          # empty = use the AI_HOST address
+AI_STT_PORT = int(os.environ.get("AI_STT_PORT", "7898"))
 AI_SERVER_TIMEOUT = 300       # seconds; a long clause on a busy server can be slow
 AI_SERVER_VOICE = "af_heart"  # for servers whose TTS has voices; IndexTTS clones its reference voice instead
 # IndexTTS-2.5 runs in its own venv (it needs its own torch build) as a small HTTP service (indextts_server.py). With the

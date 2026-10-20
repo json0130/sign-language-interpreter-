@@ -154,6 +154,16 @@ class TestFlow(unittest.TestCase):
         self.assertAlmostEqual(seg.arousal, round((cu * U.arousal + cr * ha) / (cu + cr), 3))
         self.assertEqual(seg.source, "rule")
 
+    def test_a_sentence_emotion_guessed_from_the_same_words_is_not_blended_twice(self):
+        # refine_emotion turned "... happy ... worried ..." into an anxious sentence guess at RULE_CONFIDENCE; the happy
+        # clause must still come out happy, not a 50/50 mix of happy and anxious
+        guess = Emotion("anxious", *CANONICAL_VA["anxious"], RULE_CONFIDENCE)
+        first, second = flow("I am so happy about it, but I am worried we are late.", guess)
+        self.assertEqual((first.valence, first.arousal), CANONICAL_VA["happy"])
+        self.assertEqual(first.label, "happy")
+        self.assertLess(second.valence, 0)                              # worried: negative and tense, even with 30% inertia
+        self.assertGreater(second.arousal, 0.4)
+
     def test_rule_with_zero_confidence_sentence(self):
         (seg,) = flow("Thanks so much.", Emotion("neutral", 0, 0, 0.0))
         self.assertEqual((seg.valence, seg.arousal), CANONICAL_VA["happy"])

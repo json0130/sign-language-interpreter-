@@ -98,7 +98,9 @@ def flow(text: str, utterance: Emotion, spans: Iterable[EmotionSpan] = (),
             rule = match_rule(clause.text)
             if rule:
                 rv, ra = CANONICAL_VA[rule[0]]
-                cu, cr = utterance.confidence, RULE_CONFIDENCE
+                # A sentence emotion at exactly RULE_CONFIDENCE is a text-rule guess made from these same words (refine_emotion),
+                # not recogniser evidence: blending it with a clause's own rule would count the same words twice.
+                cu, cr = (0.0 if utterance.confidence == RULE_CONFIDENCE else utterance.confidence), RULE_CONFIDENCE
                 if cu + cr:
                     v, a = (cu * utterance.valence + cr * rv) / (cu + cr), (cu * utterance.arousal + cr * ra) / (cu + cr)
                 else:
