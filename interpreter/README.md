@@ -163,10 +163,12 @@ interpreter/.venv/bin/python -m interpreter.run_pipeline --testset --play --ai-h
 
 One request per clause: `command ["TTS"]`, `content` = the text (at most 2000 characters), and in `parameters` the clause's emotion: `emo_vector` (8 weights: happy, angry, sad, afraid, disgusted, melancholic, surprised, calm), `emo_alpha` (0 to 1), `lang "EN"`, plus `voice` for servers whose TTS has voices. The reply is the usual base64 WAV with `format`, `sample_rate`, `channels`, `dtype`, and `engine`, the name of what actually spoke. On connecting, a short test checks that the server really reads the emotion fields: it sends an invalid `emo_vector` (three numbers), which a server that parses the fields must refuse. A server that accepts it gets a warning, because it would speak in its default voice with no emotion, and kupu pronunciation hints are switched off for it (they would be read aloud). The reply's `engine` field is not trusted: a server can echo it. Our IndexTTS service answers this protocol itself on `--ai-port` (default 7899), so it can be the AI server's TTS backend directly or be forwarded to by the server team's orchestrator. If the server cannot be reached, the pipeline says so and suggests `--tts indextts` / `--tts kokoro` for a voice on this machine.
 
+*Update, later on 2026-10-20: the server's handler was fixed and port 8791 now passes all five checks (sad = 1.35x neutral, fixed seed), so `--tts aiserver` with `AI_PORT=8791` is the working setup; about 5 s per clause.* The first test, kept for the record:
+
 *Live test of the AI server's orchestrator, 2026-10-20 (`ai_orchestrator.py --tts-model indextts`, listening on 8791): it speaks, but it does NOT use the emotion settings.* It accepts invalid values for them (`emo_vector: "banana"`, three numbers, `emo_alpha: 5`) and echoes the request parameters back, so its reply saying `engine: "indextts"` is only our own request field. Measured: "sad" was 0.97x the length of "neutral" (a working IndexTTS gives about 1.5x) and the strength setting made no difference; Jay's listening scores agree ("no emotion felt"). Before it is used, its TTS handler has to pass `emo_vector` and `emo_alpha` to IndexTTS: the requirements and a working reference are in `interpreter/ai_server/SERVER_TTS_SPEC.md`. Check any server (from any machine that can reach it) with:
 
 ```
-python3 -m interpreter.ai_server.check --host 172.24.47.255 --port 8791        # 8791 currently fails 4 of 5 checks
+python3 -m interpreter.ai_server.check --host 172.24.47.255 --port 8791        # failed 4 of 5 before the server fix; passes now
 python3 -m interpreter.ai_server.check --host 127.0.0.1 --port 7899            # our own IndexTTS service passes (sad = 1.42x neutral)
 ```
 
